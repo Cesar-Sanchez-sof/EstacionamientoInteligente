@@ -2,16 +2,29 @@ import React, { useState, useEffect } from 'react';
 import useAuthStore from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, Legend 
+} from 'recharts';
+import { 
+  Users, BarChart3, Car, Search, CheckCircle, XCircle, AlertCircle, Clock
+} from 'lucide-react';
 
 const AdminDashboard = () => {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
   const [spaces, setSpaces] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [docTypes, setDocTypes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('analytics'); // 'analytics', 'parking', 'users'
 
-  // Estados para el registro de usuario desde el panel admin
+  // Search filters
+  const [resSearch, setResSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+
+  // States for user registration from admin panel
   const [registerForm, setRegisterForm] = useState({
     primer_nombre: '',
     segundo_nombre: '',
@@ -26,55 +39,44 @@ const AdminDashboard = () => {
   });
   const [registerError, setRegisterError] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState('');
-  const [docTypes, setDocTypes] = useState([]);
+
+  const fetchData = async () => {
+    try {
+      const [spacesRes, resRes, docTypesRes, usersRes] = await Promise.all([
+        api.get('/spaces'),
+        api.get('/reservations'),
+        api.get('/auth/document-types'),
+        api.get('/auth/users')
+      ]);
+      setSpaces(spacesRes.data);
+      setReservations(resRes.data);
+      setDocTypes(docTypesRes.data);
+      setUsers(usersRes.data);
+      if (docTypesRes.data.length > 0 && !registerForm.documento_tipo) {
+        setRegisterForm(prev => ({ ...prev, documento_tipo: docTypesRes.data[0] }));
+      }
+    } catch (error) {
+      console.error('Error fetching admin data', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user || user.rol !== 'ADMIN') {
       navigate('/');
       return;
     }
-
-    const fetchData = async () => {
-      try {
-        const [spacesRes, resRes, docTypesRes] = await Promise.all([
-          api.get('/spaces'),
-          api.get('/reservations'),
-          api.get('/auth/document-types')
-        ]);
-        setSpaces(spacesRes.data);
-        setReservations(resRes.data);
-        setDocTypes(docTypesRes.data);
-        if (docTypesRes.data.length > 0) {
-          setRegisterForm(prev => ({ ...prev, documento_tipo: docTypesRes.data[0] }));
-        }
-      } catch (error) {
-        console.error('Error fetching admin data', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, [user, navigate]);
 
   const toggleSpaceStatus = async (id, currentStatus) => {
     try {
       await api.put(`/spaces/${id}`, { disponible: !currentStatus });
-      // Refresh
       const spacesRes = await api.get('/spaces');
       setSpaces(spacesRes.data);
     } catch (error) {
       console.error('Error updating space', error);
-    }
-  };
-
-  const deleteReservation = async (id) => {
-    try {
-      await api.delete(`/reservations/${id}`);
-      const resRes = await api.get('/reservations');
-      setReservations(resRes.data);
-    } catch (error) {
-      console.error('Error deleting res', error);
     }
   };
 
@@ -83,6 +85,9 @@ const AdminDashboard = () => {
       await api.put(`/reservations/${id}/status`, { estado: newStatus });
       const resRes = await api.get('/reservations');
       setReservations(resRes.data);
+      // Refresh spaces just in case status change freed/occupied a space
+      const spacesRes = await api.get('/spaces');
+      setSpaces(spacesRes.data);
     } catch (error) {
       console.error('Error updating reservation status', error);
     }
@@ -102,7 +107,6 @@ const AdminDashboard = () => {
       return;
     }
 
-    // Validación de número de documento por expresión regular
     const { documento_tipo, documento_numero } = registerForm;
     if (documento_tipo === 'DNI') {
       if (!/^\d{8}$/.test(documento_numero)) {
@@ -136,283 +140,555 @@ const AdminDashboard = () => {
         password: '',
         confirmPassword: ''
       });
+      // Refresh user list
+      const usersRes = await api.get('/auth/users');
+      setUsers(usersRes.data);
     } catch (err) {
       setRegisterError(err.response?.data?.message || 'Error al registrar usuario');
     }
   };
 
-  if (loading) return <div className="text-center mt-20">Cargando Panel Admin...</div>;
+  if (loading) return <div className="text-center mt-20 text-white font-semibold">Cargando Panel Admin...</div>;
 
-  // Prepare chart data
+  // Recharts: general occupancy bar data
   const occupiedCount = spaces.filter(s => !s.disponible).length;
   const availableCount = spaces.filter(s => s.disponible).length;
   
-  const chartData = [
-    { name: 'Ocupados/Físico', cantidad: occupiedCount, fill: '#ff0055' },
+  const barChartData = [
+    { name: 'Ocupados', cantidad: occupiedCount, fill: '#ff0055' },
     { name: 'Disponibles', cantidad: availableCount, fill: '#00ff66' },
-    { name: 'Reservas Activas', cantidad: reservations.length, fill: '#00f3ff' }
+    { name: 'Reservas Activas', cantidad: reservations.filter(r => ['Espera', 'Atendido'].includes(r.estado)).length, fill: '#00f3ff' }
   ];
 
+  // Recharts: pie chart data of reservation states
+  const statusCounts = { Espera: 0, Atendido: 0, Cancelado: 0, Perdida: 0 };
+  reservations.forEach(r => {
+    if (statusCounts[r.estado] !== undefined) {
+      statusCounts[r.estado]++;
+    }
+  });
+
+  const pieChartData = [
+    { name: 'En Espera', value: statusCounts.Espera, color: '#f59e0b' },
+    { name: 'Atendidas', value: statusCounts.Atendido, color: '#10b981' },
+    { name: 'Canceladas', value: statusCounts.Cancelado, color: '#ef4444' },
+    { name: 'Perdidas', value: statusCounts.Perdida, color: '#f43f5e' }
+  ].filter(item => item.value > 0);
+
+  // Generate Activity Logs / Report Logs from reservations sorted chronologically
+  const activityLogs = reservations.map(res => {
+    let message = '';
+    let timestamp = res.updated_at || res.created_at;
+    let icon = <Clock className="h-4 w-4 text-gray-400" />;
+
+    const formattedTime = new Date(timestamp).toLocaleString('es-PE', { 
+      timeZone: 'America/Bogota',
+      hour12: false
+    });
+
+    const plateText = res.placa_vehiculo ? ` (Vehículo: ${res.placa_vehiculo})` : '';
+
+    if (res.estado === 'Espera') {
+      message = `El usuario ${res.email}${plateText} agendó el Lugar #${res.numero} para el ${new Date(res.fecha).toLocaleDateString()} a las ${res.hora.slice(0, 5)}`;
+      icon = <Clock className="h-4 w-4 text-amber-400" />;
+    } else if (res.estado === 'Atendido') {
+      message = `La reserva de ${res.email}${plateText} para el Lugar #${res.numero} se marcó como ATENDIDA (vehículo ingresado)`;
+      icon = <CheckCircle className="h-4 w-4 text-emerald-400" />;
+    } else if (res.estado === 'Cancelado') {
+      message = `La reserva de ${res.email}${plateText} para el Lugar #${res.numero} fue CANCELADA`;
+      icon = <XCircle className="h-4 w-4 text-red-400" />;
+    } else if (res.estado === 'Perdida') {
+      message = `La reserva de ${res.email}${plateText} para el Lugar #${res.numero} expiró a estado PERDIDA (no se presentó)`;
+      icon = <AlertCircle className="h-4 w-4 text-rose-400" />;
+    }
+
+    return {
+      id: res.id_reserva + '-' + res.estado,
+      message,
+      time: formattedTime,
+      icon
+    };
+  });
+
+  // Filter lists based on search
+  const filteredReservations = reservations.filter(res => 
+    res.email.toLowerCase().includes(resSearch.toLowerCase()) || 
+    res.numero.toString().includes(resSearch) ||
+    res.estado.toLowerCase().includes(resSearch.toLowerCase())
+  );
+
+  const filteredUsers = users.filter(u => 
+    u.email.toLowerCase().includes(userSearch.toLowerCase()) || 
+    u.primer_nombre.toLowerCase().includes(userSearch.toLowerCase()) || 
+    u.primer_apellido.toLowerCase().includes(userSearch.toLowerCase()) || 
+    u.numero_documento.includes(userSearch)
+  );
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      <h1 className="text-3xl font-bold">Panel Administrativo</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-700 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Panel Administrativo</h1>
+          <p className="text-sm text-gray-400 mt-1">Supervisión en tiempo real y administración del estacionamiento</p>
+        </div>
         
-        {/* Gráfico de Ocupación */}
-        <div className="glass-panel p-6 rounded-xl">
-          <h2 className="text-xl font-bold mb-4">Estado General</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="name" stroke="#cbd5e1" />
-                <YAxis stroke="#cbd5e1" />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
-                <Bar dataKey="cantidad" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Gestión de Lugares */}
-        <div className="glass-panel p-6 rounded-xl">
-          <h2 className="text-xl font-bold mb-4">Control de Espacios Físicos</h2>
-          <div className="grid grid-cols-5 gap-2">
-            {spaces.map(space => (
-              <button
-                key={space.id_lugar}
-                onClick={() => toggleSpaceStatus(space.id_lugar, space.disponible)}
-                className={`p-2 rounded font-bold text-center transition-colors ${
-                  !space.disponible ? 'bg-red-500/20 text-red-500 border border-red-500' : 'bg-green-500/20 text-green-500 border border-green-500'
-                }`}
-              >
-                #{space.numero}
-                <div className="text-xs font-normal mt-1">{space.disponible ? 'LIBRE' : 'OCUPADO'}</div>
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 mt-4">Haz clic para alternar el estado físico de un lugar de forma manual (simulando sensor).</p>
+        {/* Navigation Tabs */}
+        <div className="flex flex-wrap md:flex-nowrap gap-2 mt-4 md:mt-0 bg-slate-900/60 p-1 rounded-xl border border-gray-800 w-full md:w-auto">
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-1 md:flex-none ${
+              activeTab === 'analytics'
+                ? 'bg-[var(--neon-blue)] text-black shadow-[0_0_15px_rgba(0,243,255,0.3)]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <BarChart3 size={16} />
+            Estadísticas y Reportes
+          </button>
+          <button
+            onClick={() => setActiveTab('parking')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-1 md:flex-none ${
+              activeTab === 'parking'
+                ? 'bg-[var(--neon-blue)] text-black shadow-[0_0_15px_rgba(0,243,255,0.3)]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Car size={16} />
+            Estacionamiento y Reservas
+          </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-1 md:flex-none ${
+              activeTab === 'users'
+                ? 'bg-[var(--neon-blue)] text-black shadow-[0_0_15px_rgba(0,243,255,0.3)]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Users size={16} />
+            Gestión de Usuarios
+          </button>
         </div>
       </div>
 
-      {/* Registrar Nuevo Usuario */}
-      <div className="glass-panel p-6 rounded-xl">
-        <h2 className="text-xl font-bold mb-4 text-white">Registrar Nuevo Usuario</h2>
-        <form onSubmit={handleRegisterSubmit} className="space-y-4">
-          {registerError && (
-            <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded text-sm text-center">
-              {registerError}
+      {/* TAB 1: ANALYTICS & REPORTS */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Ocupación General Bar Chart */}
+            <div className="glass-panel p-6 rounded-xl">
+              <h2 className="text-xl font-bold mb-4 text-white">Estado General de Cajones</h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="name" stroke="#cbd5e1" />
+                    <YAxis stroke="#cbd5e1" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
+                    <Bar dataKey="cantidad" radius={[4, 4, 0, 0]}>
+                      {barChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          )}
-          {registerSuccess && (
-            <div className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 p-3 rounded text-sm text-center">
-              {registerSuccess}
+
+            {/* Reservas Status Pie Chart */}
+            <div className="glass-panel p-6 rounded-xl">
+              <h2 className="text-xl font-bold mb-4 text-white">Rendimiento e Historial de Reservas</h2>
+              <div className="h-64 flex items-center justify-center">
+                {pieChartData.length === 0 ? (
+                  <p className="text-gray-400 text-sm">No hay datos de reservas disponibles.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="45%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }} />
+                      <Legend verticalAlign="bottom" height={36} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Primer Nombre *</label>
-              <input
-                name="primer_nombre"
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.primer_nombre}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Segundo Nombre (opcional)</label>
-              <input
-                name="segundo_nombre"
-                type="text"
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.segundo_nombre}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Primer Apellido *</label>
-              <input
-                name="primer_apellido"
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.primer_apellido}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Segundo Apellido *</label>
-              <input
-                name="segundo_apellido"
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.segundo_apellido}
-                onChange={handleRegisterChange}
-              />
-            </div>
+
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Tipo Documento *</label>
-              <select
-                name="documento_tipo"
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.documento_tipo}
-                onChange={handleRegisterChange}
-              >
-                {docTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Nro Documento *</label>
-              <input
-                name="documento_numero"
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.documento_numero}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Placa Vehículo *</label>
-              <input
-                name="placa_vehiculo"
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm font-mono uppercase"
-                value={registerForm.placa_vehiculo}
-                onChange={handleRegisterChange}
-              />
+          {/* Activity Logs Panel */}
+          <div className="glass-panel p-6 rounded-xl">
+            <h2 className="text-xl font-bold mb-4 text-white">Logs de Actividad e Informes</h2>
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-2 divide-y divide-gray-800">
+              {activityLogs.length === 0 ? (
+                <p className="text-gray-400 text-sm">No hay registros de actividad recientes.</p>
+              ) : (
+                activityLogs.map((log) => (
+                  <div key={log.id} className="flex gap-4 pt-4 first:pt-0">
+                    <div className="mt-1 flex-shrink-0 bg-slate-800/80 p-1.5 rounded-lg border border-gray-700/50">
+                      {log.icon}
+                    </div>
+                    <div className="flex-grow flex flex-col md:flex-row md:justify-between md:items-center gap-1">
+                      <p className="text-sm text-gray-300 font-medium">{log.message}</p>
+                      <span className="text-xs text-gray-500 font-mono flex-shrink-0">{log.time}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Email *</label>
-              <input
-                name="email"
-                type="email"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.email}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Contraseña *</label>
-              <input
-                name="password"
-                type="password"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.password}
-                onChange={handleRegisterChange}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Confirmar Contraseña *</label>
-              <input
-                name="confirmPassword"
-                type="password"
-                required
-                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                value={registerForm.confirmPassword}
-                onChange={handleRegisterChange}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-[var(--neon-blue)] text-black font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-[0_0_15px_rgba(0,243,255,0.4)] text-sm"
-            >
-              Registrar Usuario
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* Lista de Reservas */}
-      <div className="glass-panel p-6 rounded-xl">
-        <h2 className="text-xl font-bold mb-4">Todas las Reservas</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-700">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Usuario</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lugar</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Fecha/Hora</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Estado</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {reservations.map(res => (
-                <tr key={res.id_reserva}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{res.id_reserva}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)]">{res.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">#{res.numero}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(res.fecha).toLocaleDateString()} {res.hora}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {res.estado === 'Espera' && (
-                      <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium text-xs">Espera</span>
-                    )}
-                    {res.estado === 'Atendido' && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium text-xs">Atendido</span>
-                    )}
-                    {res.estado === 'Cancelado' && (
-                      <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-medium text-xs">Cancelado</span>
-                    )}
-                    {res.estado === 'Perdida' && (
-                      <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-medium text-xs">Perdida</span>
-                    )}
-                  </td>
-                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                    {res.estado === 'Espera' ? (
-                      <>
-                        <button
-                          onClick={() => changeReservationStatus(res.id_reserva, 'Atendido')}
-                          className="text-emerald-400 hover:text-emerald-300 font-semibold"
-                        >
-                          Atender
-                        </button>
-                        <span className="text-gray-600">|</span>
-                        <button
-                          onClick={() => changeReservationStatus(res.id_reserva, 'Cancelado')}
-                          className="text-red-400 hover:text-red-300 font-semibold"
-                        >
-                          Cancelar
-                        </button>
-                        <span className="text-gray-600">|</span>
-                        <button
-                          onClick={() => changeReservationStatus(res.id_reserva, 'Perdida')}
-                          className="text-rose-400 hover:text-rose-300 font-semibold"
-                        >
-                          Perdida
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-gray-500 text-xs">Sin acciones</span>
-                    )}
-                  </td>
-
-                </tr>
+      {/* TAB 2: PARKING CONTROL */}
+      {activeTab === 'parking' && (
+        <div className="space-y-6">
+          
+          {/* Physical Spaces Grid */}
+          <div className="glass-panel p-6 rounded-xl">
+            <h2 className="text-xl font-bold mb-2 text-white">Control de Sensores Físicos</h2>
+            <p className="text-xs text-gray-400 mb-4">Simula la activación física de los sensores del cajón. Haz clic en un espacio para alternar su ocupación.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-3">
+              {spaces.map(space => (
+                <button
+                  key={space.id_lugar}
+                  onClick={() => toggleSpaceStatus(space.id_lugar, space.disponible)}
+                  className={`p-3 rounded-xl font-bold text-center transition-all ${
+                    !space.disponible 
+                      ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20' 
+                      : 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
+                  }`}
+                >
+                  <span className="text-sm block">#{space.numero}</span>
+                  <span className="text-[10px] font-normal uppercase tracking-wider block mt-1">
+                    {space.disponible ? 'Libre' : 'Ocupado'}
+                  </span>
+                </button>
               ))}
-            </tbody>
-          </table>
-          {reservations.length === 0 && <p className="text-gray-400 mt-4 text-center">No hay reservas registradas.</p>}
+            </div>
+          </div>
+
+          {/* Reservations Table */}
+          <div className="glass-panel p-6 rounded-xl">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-4">
+              <h2 className="text-xl font-bold text-white">Todas las Reservas</h2>
+              
+              {/* Search reservations */}
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por correo, cajón o estado..."
+                  className="w-full pl-9 pr-4 py-2 border border-gray-700 bg-gray-900/60 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                  value={resSearch}
+                  onChange={(e) => setResSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-800">
+                <thead>
+                  <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-3">ID</th>
+                    <th className="px-6 py-3">Usuario</th>
+                    <th className="px-6 py-3">Lugar</th>
+                    <th className="px-6 py-3">Fecha/Hora</th>
+                    <th className="px-6 py-3">Estado</th>
+                    <th className="px-6 py-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/80">
+                  {filteredReservations.map(res => (
+                    <tr key={res.id_reserva} className="hover:bg-slate-800/20 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">#{res.id_reserva}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)] font-medium">{res.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-white">Cajón #{res.numero}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        {new Date(res.fecha).toLocaleDateString()} - {res.hora.slice(0, 5)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {res.estado === 'Espera' && (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold">Espera</span>
+                        )}
+                        {res.estado === 'Atendido' && (
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">Atendido</span>
+                        )}
+                        {res.estado === 'Cancelado' && (
+                          <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-semibold">Cancelado</span>
+                        )}
+                        {res.estado === 'Perdida' && (
+                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-semibold">Perdida</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center space-x-2">
+                        {res.estado === 'Espera' ? (
+                          <div className="inline-flex rounded-lg border border-gray-700 bg-gray-900/50 p-0.5">
+                            <button
+                              onClick={() => changeReservationStatus(res.id_reserva, 'Atendido')}
+                              className="px-2 py-1 text-xs font-semibold rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            >
+                              Atender
+                            </button>
+                            <span className="text-gray-700 py-1">|</span>
+                            <button
+                              onClick={() => changeReservationStatus(res.id_reserva, 'Cancelado')}
+                              className="px-2 py-1 text-xs font-semibold rounded text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                            <span className="text-gray-700 py-1">|</span>
+                            <button
+                              onClick={() => changeReservationStatus(res.id_reserva, 'Perdida')}
+                              className="px-2 py-1 text-xs font-semibold rounded text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            >
+                              Perdida
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-500 text-xs">Completada</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filteredReservations.length === 0 && (
+                <p className="text-gray-400 mt-6 text-center text-sm py-4">No se encontraron reservas con ese criterio.</p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* TAB 3: USER MANAGEMENT */}
+      {activeTab === 'users' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* User Registration Form Card */}
+            <div className="glass-panel p-6 rounded-xl lg:col-span-1 h-fit">
+              <h2 className="text-xl font-bold mb-4 text-white">Registrar Nuevo Usuario</h2>
+              <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                {registerError && (
+                  <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded text-sm text-center">
+                    {registerError}
+                  </div>
+                )}
+                {registerSuccess && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 p-3 rounded text-sm text-center">
+                    {registerSuccess}
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Primer Nombre *</label>
+                    <input
+                      name="primer_nombre"
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.primer_nombre}
+                      onChange={handleRegisterChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Primer Apellido *</label>
+                    <input
+                      name="primer_apellido"
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.primer_apellido}
+                      onChange={handleRegisterChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Segundo Nombre</label>
+                    <input
+                      name="segundo_nombre"
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.segundo_nombre}
+                      onChange={handleRegisterChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Segundo Apellido *</label>
+                    <input
+                      name="segundo_apellido"
+                      type="text"
+                      required
+                      className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.segundo_apellido}
+                      onChange={handleRegisterChange}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Documento Identidad *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      name="documento_tipo"
+                      className="col-span-1 px-2 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-xs"
+                      value={registerForm.documento_tipo}
+                      onChange={handleRegisterChange}
+                    >
+                      {docTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    <input
+                      name="documento_numero"
+                      type="text"
+                      required
+                      placeholder="Nro documento"
+                      className="col-span-2 px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.documento_numero}
+                      onChange={handleRegisterChange}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Placa Vehículo *</label>
+                  <input
+                    name="placa_vehiculo"
+                    type="text"
+                    required
+                    placeholder="ABC-123"
+                    className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm font-mono uppercase"
+                    value={registerForm.placa_vehiculo}
+                    onChange={handleRegisterChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Email *</label>
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    placeholder="correo@ejemplo.com"
+                    className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={registerForm.email}
+                    onChange={handleRegisterChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Contraseña *</label>
+                  <input
+                    name="password"
+                    type="password"
+                    required
+                    className="w-full px-3 py-2 border border-gray-600 bg-gray-855 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={registerForm.password}
+                    onChange={handleRegisterChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Confirmar Contraseña *</label>
+                  <input
+                    name="confirmPassword"
+                    type="password"
+                    required
+                    className="w-full px-3 py-2 border border-gray-600 bg-gray-855 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={registerForm.confirmPassword}
+                    onChange={handleRegisterChange}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 mt-2 bg-[var(--neon-blue)] text-black font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-[0_0_15px_rgba(0,243,255,0.4)] text-sm"
+                >
+                  Registrar Cliente
+                </button>
+              </form>
+            </div>
+
+            {/* Registered Users List Card */}
+            <div className="glass-panel p-6 rounded-xl lg:col-span-2">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-4">
+                <h2 className="text-xl font-bold text-white">Lista de Usuarios</h2>
+                
+                {/* Search users */}
+                <div className="relative w-full md:w-80">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, correo o documento..."
+                    className="w-full pl-9 pr-4 py-2 border border-gray-700 bg-gray-900/60 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-800">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      <th className="px-6 py-3">Nombre</th>
+                      <th className="px-6 py-3">Email</th>
+                      <th className="px-6 py-3">Documento</th>
+                      <th className="px-6 py-3">Rol</th>
+                      <th className="px-6 py-3">Registro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/80">
+                    {filteredUsers.map(u => (
+                      <tr key={u.id_usuario} className="hover:bg-slate-800/20 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-medium">
+                          {u.primer_nombre} {u.primer_apellido}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)]">{u.email}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">
+                          <span className="text-gray-500 mr-1.5">{u.documento_tipo}:</span>{u.numero_documento}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            u.rol === 'ADMIN' 
+                              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
+                              : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                          }`}>
+                            {u.rol}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(u.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredUsers.length === 0 && (
+                  <p className="text-gray-400 mt-6 text-center text-sm py-4">No se encontraron usuarios con ese criterio.</p>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };
