@@ -43,11 +43,8 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <Link to="/login" className="text-sm font-medium hover:text-[var(--neon-blue)] transition-colors">
+                <Link to="/login" className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--neon-blue)] text-black hover:bg-opacity-90 transition-colors shadow-[0_0_15px_rgba(0,243,255,0.5)]">
                   Iniciar Sesión
-                </Link>
-                <Link to="/register" className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--neon-blue)] text-black hover:bg-opacity-90 transition-colors shadow-[0_0_15px_rgba(0,243,255,0.5)]">
-                  Registrarse
                 </Link>
               </>
             )}

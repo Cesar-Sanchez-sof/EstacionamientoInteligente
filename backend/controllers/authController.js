@@ -203,4 +203,22 @@ const addVehicle = async (req, res) => {
   return res.status(400).json({ message: 'No se permite registrar vehículos adicionales.' });
 };
 
-module.exports = { registerUser, loginUser, getUserProfile, getDocumentTypes, getMyVehicles, addVehicle };
+const getAllUsers = async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT u.id_usuario, u.email, u.rol, u.created_at, 
+              p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido, 
+              d.tipo AS documento_tipo, p.numero_documento
+       FROM Usuario u 
+       JOIN Persona p ON u.id_persona = p.id_persona 
+       JOIN Documento d ON p.id_documento = d.id_documento
+       ORDER BY u.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error en el servidor al obtener los usuarios' });
+  }
+};
+
+module.exports = { registerUser, loginUser, getUserProfile, getDocumentTypes, getMyVehicles, addVehicle, getAllUsers };
