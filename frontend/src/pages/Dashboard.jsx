@@ -61,15 +61,39 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [selectedVehicleId]);
 
+  const getTodayBogota = () => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const partMap = {};
+    parts.forEach(p => partMap[p.type] = p.value);
+    return `${partMap.year}-${partMap.month}-${partMap.day}`;
+  };
+
   const handleSelectSpace = (space) => {
     if (space.statusColor === 'green') {
       setSelectedSpace(space);
       setBookingError('');
-      // Pre-llenar con la fecha y hora actuales
-      const today = new Date().toISOString().split('T')[0];
-      const nowTime = new Date().toTimeString().split(' ')[0].slice(0, 5); // Formato HH:MM
-      setReserveDate(today);
-      setReserveTime(nowTime);
+      // Pre-llenar con la fecha y hora actuales en America/Bogota
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const parts = formatter.formatToParts(new Date());
+      const partMap = {};
+      parts.forEach(p => partMap[p.type] = p.value);
+      
+      setReserveDate(`${partMap.year}-${partMap.month}-${partMap.day}`);
+      setReserveTime(`${partMap.hour}:${partMap.minute}`);
     }
   };
 
@@ -97,6 +121,35 @@ const Dashboard = () => {
       setBookingError('Por favor selecciona la fecha y hora de la reserva.');
       return;
     }
+
+    // Validar en el frontend en la zona horaria del estacionamiento (America/Bogota)
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const partMap = {};
+    parts.forEach(p => partMap[p.type] = p.value);
+    const localNow = new Date(`${partMap.year}-${partMap.month}-${partMap.day}T${partMap.hour}:${partMap.minute}:${partMap.second}`);
+    localNow.setSeconds(0);
+    localNow.setMilliseconds(0);
+
+    const selectedDateTime = new Date(`${reserveDate}T${reserveTime}`);
+    selectedDateTime.setSeconds(0);
+    selectedDateTime.setMilliseconds(0);
+
+    if (selectedDateTime <= localNow) {
+      setBookingError('No se puede reservar para la fecha u hora actual o en el pasado.');
+      return;
+    }
+
+
     try {
       await api.post('/reservations', {
         id_lugar: selectedSpace.id_lugar,
@@ -177,7 +230,7 @@ const Dashboard = () => {
                     className="w-full rounded-lg px-3 py-2 border border-gray-600 bg-gray-800 text-white focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
                     value={reserveDate}
                     onChange={(e) => setReserveDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getTodayBogota()}
                   />
                 </div>
 
@@ -222,17 +275,36 @@ const Dashboard = () => {
                   <div key={res.id_reserva} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold text-[var(--neon-blue)]">Lugar #{res.numero}</span>
-                      <span className="text-xs text-gray-400">{new Date(res.fecha).toLocaleDateString()}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(res.fecha).toLocaleDateString()} - {res.hora ? res.hora.slice(0, 5) : ''}
+                      </span>
                     </div>
-                    <div className="text-xs text-gray-300 mb-2">
-                      Vehículo: <span className="font-mono text-white bg-gray-700/50 px-1.5 py-0.5 rounded">{res.placa_vehiculo || 'No registrado'}</span>
+
+                    <div className="flex justify-between items-center mb-2 text-xs">
+                      <span className="text-gray-300">
+                        Vehículo: <span className="font-mono text-white bg-gray-700/50 px-1.5 py-0.5 rounded">{res.placa_vehiculo || 'No registrado'}</span>
+                      </span>
+                      {res.estado === 'Espera' && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium">Espera</span>
+                      )}
+                      {res.estado === 'Atendido' && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium">Atendido</span>
+                      )}
+                      {res.estado === 'Cancelado' && (
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-medium">Cancelado</span>
+                      )}
+                      {res.estado === 'Perdida' && (
+                        <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-medium">Perdida</span>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleCancel(res.id_reserva)}
-                      className="text-sm text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      Cancelar Reserva
-                    </button>
+                    {res.estado === 'Espera' && (
+                      <button
+                        onClick={() => handleCancel(res.id_reserva)}
+                        className="text-sm text-red-400 hover:text-red-300 transition-colors mt-2 block"
+                      >
+                        Cancelar Reserva
+                      </button>
+                    )}
                   </div>
                 ))
               )}
