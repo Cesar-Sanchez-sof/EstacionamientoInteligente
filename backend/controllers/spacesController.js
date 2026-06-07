@@ -6,15 +6,32 @@ const db = require('../config/db');
 const getSpaces = async (req, res) => {
   try {
     const userId = req.user.id;
+    // 1. Auto-expire reservations whose date and time have passed
+    const expiredRes = await db.query(`
+      UPDATE Reserva 
+      SET estado = 'Perdida', updated_at = CURRENT_TIMESTAMP 
+      WHERE estado = 'Espera' 
+        AND timezone('America/Bogota', fecha + hora) < CURRENT_TIMESTAMP
+      RETURNING id_lugar
+    `);
+
+    if (expiredRes.rows.length > 0) {
+      const expiredLugarIds = expiredRes.rows.map(r => r.id_lugar);
+      await db.query(
+        'UPDATE Lugar SET disponible = true WHERE id_lugar = ANY($1)',
+        [expiredLugarIds]
+      );
+    }
+
     // Get all spaces
     const spacesResult = await db.query('SELECT * FROM Lugar ORDER BY numero ASC');
     const spaces = spacesResult.rows;
 
     // Get active reservations for today (assuming reservations are per day)
-    // For simplicity, we check if there's any reservation in the future or today
+    // We check if there's any active reservation (Espera or Atendido)
     const reservationsResult = await db.query(
       `SELECT id_lugar, id_usuario FROM Reserva 
-       WHERE fecha >= CURRENT_DATE`
+       WHERE fecha >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')::date AND estado IN ('Espera', 'Atendido')`
     );
     const reservations = reservationsResult.rows;
 

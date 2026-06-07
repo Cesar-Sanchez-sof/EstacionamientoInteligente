@@ -1,16 +1,44 @@
-# React + Vite
+# 💻 Estacionamiento Inteligente - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Este es el directorio del **Frontend** para la aplicación de Estacionamiento Inteligente.
 
-Currently, two official plugins are available:
+La interfaz de usuario está construida con:
+- **React 19**
+- **Vite** (Compilador y empaquetador)
+- **Tailwind CSS v4** (Estilos rápidos y responsivos)
+- **Three.js & React Three Fiber** (Visualización interactiva en 3D de las cocheras)
+- **Zustand** (Gestión de estado global para autenticación)
+- **Recharts** (Panel de estadísticas para el administrador)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 📖 Documentación General y Guía de Uso
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Para obtener la información completa del proyecto, incluyendo:
+- 🏗️ **Arquitectura y esquema de la base de datos (PostgreSQL)**
+- 📂 **Estructura detallada del proyecto**
+- ⚙️ **Variables de entorno (.env)**
+- 🚀 **Instrucciones completas de instalación de Frontend y Backend**
+- 🎨 **Filosofía de diseño UX/UI**
 
-## Expanding the ESLint configuration
+Por favor, dirígete al **[README.md de la raíz del proyecto](../README.md)**.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+## ⚡ Comandos Rápidos
+
+Para levantar únicamente el frontend en modo de desarrollo:
+
+```bash
+# Instalar dependencias
+npm install
+
+# Levantar servidor de desarrollo (usualmente en http://localhost:5173)
+npm run dev
+
+# Generar compilación para producción
+npm run build
+
+# Previsualizar el build de producción localmente
+npm run preview
+```

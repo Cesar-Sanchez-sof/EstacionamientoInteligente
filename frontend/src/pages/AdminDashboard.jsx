@@ -56,6 +56,16 @@ const AdminDashboard = () => {
     }
   };
 
+  const changeReservationStatus = async (id, newStatus) => {
+    try {
+      await api.put(`/reservations/${id}/status`, { estado: newStatus });
+      const resRes = await api.get('/reservations');
+      setReservations(resRes.data);
+    } catch (error) {
+      console.error('Error updating reservation status', error);
+    }
+  };
+
   if (loading) return <div className="text-center mt-20">Cargando Panel Admin...</div>;
 
   // Prepare chart data
@@ -123,6 +133,7 @@ const AdminDashboard = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Usuario</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lugar</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Fecha/Hora</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Estado</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
@@ -134,13 +145,48 @@ const AdminDashboard = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">#{res.numero}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(res.fecha).toLocaleDateString()} {res.hora}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => deleteReservation(res.id_reserva)}
-                      className="text-red-400 hover:text-red-300"
-                    >
-                      Eliminar
-                    </button>
+                    {res.estado === 'Espera' && (
+                      <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium text-xs">Espera</span>
+                    )}
+                    {res.estado === 'Atendido' && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium text-xs">Atendido</span>
+                    )}
+                    {res.estado === 'Cancelado' && (
+                      <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-medium text-xs">Cancelado</span>
+                    )}
+                    {res.estado === 'Perdida' && (
+                      <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-medium text-xs">Perdida</span>
+                    )}
                   </td>
+                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                    {res.estado === 'Espera' ? (
+                      <>
+                        <button
+                          onClick={() => changeReservationStatus(res.id_reserva, 'Atendido')}
+                          className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                        >
+                          Atender
+                        </button>
+                        <span className="text-gray-600">|</span>
+                        <button
+                          onClick={() => changeReservationStatus(res.id_reserva, 'Cancelado')}
+                          className="text-red-400 hover:text-red-300 font-semibold"
+                        >
+                          Cancelar
+                        </button>
+                        <span className="text-gray-600">|</span>
+                        <button
+                          onClick={() => changeReservationStatus(res.id_reserva, 'Perdida')}
+                          className="text-rose-400 hover:text-rose-300 font-semibold"
+                        >
+                          Perdida
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-gray-500 text-xs">Sin acciones</span>
+                    )}
+                  </td>
+
                 </tr>
               ))}
             </tbody>
