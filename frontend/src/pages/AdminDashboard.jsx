@@ -11,6 +11,23 @@ const AdminDashboard = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Estados para el registro de usuario desde el panel admin
+  const [registerForm, setRegisterForm] = useState({
+    primer_nombre: '',
+    segundo_nombre: '',
+    primer_apellido: '',
+    segundo_apellido: '',
+    documento_tipo: 'DNI',
+    documento_numero: '',
+    placa_vehiculo: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [registerError, setRegisterError] = useState('');
+  const [registerSuccess, setRegisterSuccess] = useState('');
+  const [docTypes, setDocTypes] = useState([]);
+
   useEffect(() => {
     if (!user || user.rol !== 'ADMIN') {
       navigate('/');
@@ -19,12 +36,17 @@ const AdminDashboard = () => {
 
     const fetchData = async () => {
       try {
-        const [spacesRes, resRes] = await Promise.all([
+        const [spacesRes, resRes, docTypesRes] = await Promise.all([
           api.get('/spaces'),
-          api.get('/reservations')
+          api.get('/reservations'),
+          api.get('/auth/document-types')
         ]);
         setSpaces(spacesRes.data);
         setReservations(resRes.data);
+        setDocTypes(docTypesRes.data);
+        if (docTypesRes.data.length > 0) {
+          setRegisterForm(prev => ({ ...prev, documento_tipo: docTypesRes.data[0] }));
+        }
       } catch (error) {
         console.error('Error fetching admin data', error);
       } finally {
@@ -63,6 +85,59 @@ const AdminDashboard = () => {
       setReservations(resRes.data);
     } catch (error) {
       console.error('Error updating reservation status', error);
+    }
+  };
+
+  const handleRegisterChange = (e) => {
+    setRegisterForm({ ...registerForm, [e.target.name]: e.target.value });
+  };
+
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setRegisterError('');
+    setRegisterSuccess('');
+
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setRegisterError('Las contraseñas no coinciden');
+      return;
+    }
+
+    // Validación de número de documento por expresión regular
+    const { documento_tipo, documento_numero } = registerForm;
+    if (documento_tipo === 'DNI') {
+      if (!/^\d{8}$/.test(documento_numero)) {
+        setRegisterError('El DNI debe tener exactamente 8 dígitos numéricos.');
+        return;
+      }
+    } else if (documento_tipo === 'Pasaporte') {
+      if (!/^[a-zA-Z]{3}\d{6}$/.test(documento_numero)) {
+        setRegisterError('El Pasaporte debe tener exactamente 9 caracteres (3 letras y 6 números).');
+        return;
+      }
+    } else if (documento_tipo === 'Carnet de Extranjeria' || documento_tipo === 'Carnet de Extranjería') {
+      if (!/^\d{9}$/.test(documento_numero)) {
+        setRegisterError('El Carnet de Extranjería debe tener exactamente 9 dígitos numéricos.');
+        return;
+      }
+    }
+
+    try {
+      await api.post('/auth/register', registerForm);
+      setRegisterSuccess('¡Usuario registrado exitosamente!');
+      setRegisterForm({
+        primer_nombre: '',
+        segundo_nombre: '',
+        primer_apellido: '',
+        segundo_apellido: '',
+        documento_tipo: docTypes[0] || 'DNI',
+        documento_numero: '',
+        placa_vehiculo: '',
+        email: '',
+        password: '',
+        confirmPassword: ''
+      });
+    } catch (err) {
+      setRegisterError(err.response?.data?.message || 'Error al registrar usuario');
     }
   };
 
@@ -119,7 +194,151 @@ const AdminDashboard = () => {
           </div>
           <p className="text-xs text-gray-400 mt-4">Haz clic para alternar el estado físico de un lugar de forma manual (simulando sensor).</p>
         </div>
+      </div>
 
+      {/* Registrar Nuevo Usuario */}
+      <div className="glass-panel p-6 rounded-xl">
+        <h2 className="text-xl font-bold mb-4 text-white">Registrar Nuevo Usuario</h2>
+        <form onSubmit={handleRegisterSubmit} className="space-y-4">
+          {registerError && (
+            <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded text-sm text-center">
+              {registerError}
+            </div>
+          )}
+          {registerSuccess && (
+            <div className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 p-3 rounded text-sm text-center">
+              {registerSuccess}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Primer Nombre *</label>
+              <input
+                name="primer_nombre"
+                type="text"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.primer_nombre}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Segundo Nombre (opcional)</label>
+              <input
+                name="segundo_nombre"
+                type="text"
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.segundo_nombre}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Primer Apellido *</label>
+              <input
+                name="primer_apellido"
+                type="text"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.primer_apellido}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Segundo Apellido *</label>
+              <input
+                name="segundo_apellido"
+                type="text"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.segundo_apellido}
+                onChange={handleRegisterChange}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Tipo Documento *</label>
+              <select
+                name="documento_tipo"
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.documento_tipo}
+                onChange={handleRegisterChange}
+              >
+                {docTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Nro Documento *</label>
+              <input
+                name="documento_numero"
+                type="text"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.documento_numero}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Placa Vehículo *</label>
+              <input
+                name="placa_vehiculo"
+                type="text"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm font-mono uppercase"
+                value={registerForm.placa_vehiculo}
+                onChange={handleRegisterChange}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Email *</label>
+              <input
+                name="email"
+                type="email"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.email}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Contraseña *</label>
+              <input
+                name="password"
+                type="password"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.password}
+                onChange={handleRegisterChange}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Confirmar Contraseña *</label>
+              <input
+                name="confirmPassword"
+                type="password"
+                required
+                className="w-full px-3 py-2 border border-gray-600 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                value={registerForm.confirmPassword}
+                onChange={handleRegisterChange}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-[var(--neon-blue)] text-black font-bold rounded-lg hover:bg-opacity-90 transition-all shadow-[0_0_15px_rgba(0,243,255,0.4)] text-sm"
+            >
+              Registrar Usuario
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Lista de Reservas */}
