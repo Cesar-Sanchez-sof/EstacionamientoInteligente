@@ -40,6 +40,82 @@ const AdminDashboard = () => {
   const [registerError, setRegisterError] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState('');
 
+  // States for editing user in modal
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({
+    primer_nombre: '',
+    segundo_nombre: '',
+    primer_apellido: '',
+    segundo_apellido: '',
+    documento_tipo: 'DNI',
+    documento_numero: '',
+    email: '',
+    password: ''
+  });
+  const [editingUserVehicles, setEditingUserVehicles] = useState([]);
+  const [newVehiclePlate, setNewVehiclePlate] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [addVehicleError, setAddVehicleError] = useState('');
+
+  const handleEditClick = async (u) => {
+    setEditingUser(u);
+    setEditError('');
+    setEditSuccess('');
+    setAddVehicleError('');
+    setNewVehiclePlate('');
+    setEditForm({
+      primer_nombre: u.primer_nombre || '',
+      segundo_nombre: u.segundo_nombre || '',
+      primer_apellido: u.primer_apellido || '',
+      segundo_apellido: u.segundo_apellido || '',
+      documento_tipo: u.documento_tipo || 'DNI',
+      documento_numero: u.numero_documento || '',
+      email: u.email || '',
+      password: ''
+    });
+    try {
+      const response = await api.get(`/auth/admin/users/${u.id_usuario}/vehicles`);
+      setEditingUserVehicles(response.data);
+    } catch (err) {
+      console.error('Error fetching user vehicles:', err);
+    }
+  };
+
+  const handleEditFormChange = (e) => {
+    setEditForm({ ...editForm, [e.target.name]: e.target.value });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    setEditSuccess('');
+    try {
+      await api.put(`/auth/admin/users/${editingUser.id_usuario}`, editForm);
+      setEditSuccess('Usuario actualizado exitosamente.');
+      const usersRes = await api.get('/auth/users');
+      setUsers(usersRes.data);
+    } catch (err) {
+      setEditError(err.response?.data?.message || 'Error al actualizar usuario');
+    }
+  };
+
+  const handleAdminAddVehicle = async (e) => {
+    e.preventDefault();
+    setAddVehicleError('');
+    if (!newVehiclePlate.trim()) return;
+    try {
+      const response = await api.post('/auth/admin/add-vehicle', {
+        userId: editingUser.id_usuario,
+        placa_vehiculo: newVehiclePlate
+      });
+      setEditingUserVehicles(prev => [response.data, ...prev]);
+      setNewVehiclePlate('');
+    } catch (err) {
+      setAddVehicleError(err.response?.data?.message || 'Error al agregar vehículo');
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [spacesRes, resRes, docTypesRes, usersRes] = await Promise.all([
@@ -652,13 +728,17 @@ const AdminDashboard = () => {
                       <th className="px-6 py-3">Documento</th>
                       <th className="px-6 py-3">Rol</th>
                       <th className="px-6 py-3">Registro</th>
+                      <th className="px-6 py-3 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/80">
                     {filteredUsers.map(u => (
                       <tr key={u.id_usuario} className="hover:bg-slate-800/20 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-medium flex items-center">
                           {u.primer_nombre} {u.primer_apellido}
+                          {(u.id_usuario === user.id || u.id_usuario === user.id_usuario) && (
+                            <span className="text-[10px] bg-slate-800 text-gray-400 font-semibold px-1.5 py-0.5 rounded ml-2 border border-gray-700/60">(Tú)</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)]">{u.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">
@@ -676,6 +756,16 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(u.created_at).toLocaleDateString()}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-medium">
+                          {u.rol === 'USER' && (
+                            <button
+                              onClick={() => handleEditClick(u)}
+                              className="px-3 py-1.5 bg-[var(--neon-blue)] text-black font-semibold rounded-lg hover:bg-opacity-90 text-xs transition-colors cursor-pointer"
+                            >
+                              Editar
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -684,6 +774,191 @@ const AdminDashboard = () => {
                   <p className="text-gray-400 mt-6 text-center text-sm py-4">No se encontraron usuarios con ese criterio.</p>
                 )}
               </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal flotante de edición de usuario */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="glass-panel w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700/80 shadow-2xl p-6 relative flex flex-col space-y-6">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div>
+                <h3 className="text-xl font-bold text-white">Editar Usuario</h3>
+                <p className="text-xs text-gray-400 mt-0.5 font-medium">Modifica los datos y gestiona los vehículos de {editingUser.email}</p>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-gray-400 hover:text-white transition-colors text-2xl font-bold px-2 cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Error and Success banners */}
+            {editError && (
+              <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm text-center">
+                {editError}
+              </div>
+            )}
+            {editSuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-500 p-3 rounded-lg text-sm text-center">
+                {editSuccess}
+              </div>
+            )}
+
+            {/* Content Split: Form left, Vehicles right */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* Left Column: Edit Form */}
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider border-b border-gray-800 pb-1.5">Datos Personales y de Cuenta</h4>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Primer Nombre</label>
+                    <input
+                      name="primer_nombre"
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.primer_nombre}
+                      onChange={handleEditFormChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Primer Apellido</label>
+                    <input
+                      name="primer_apellido"
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.primer_apellido}
+                      onChange={handleEditFormChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Segundo Nombre</label>
+                    <input
+                      name="segundo_nombre"
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.segundo_nombre}
+                      onChange={handleEditFormChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Segundo Apellido</label>
+                    <input
+                      name="segundo_apellido"
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.segundo_apellido}
+                      onChange={handleEditFormChange}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Tipo y Nro Documento</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      name="documento_tipo"
+                      className="col-span-1 px-2 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-xs"
+                      value={editForm.documento_tipo}
+                      onChange={handleEditFormChange}
+                    >
+                      {docTypes.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <input
+                      name="documento_numero"
+                      type="text"
+                      className="col-span-2 px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.documento_numero}
+                      onChange={handleEditFormChange}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Correo Electrónico</label>
+                  <input
+                    name="email"
+                    type="email"
+                    className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={editForm.email}
+                    onChange={handleEditFormChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Contraseña (Dejar vacío para mantener actual)</label>
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="Nueva contraseña"
+                    className="w-full px-3 py-2 border border-gray-655 bg-gray-855 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={editForm.password}
+                    onChange={handleEditFormChange}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-[var(--neon-blue)] text-black font-bold rounded-lg hover:bg-opacity-95 shadow-[0_0_15px_rgba(0,243,255,0.4)] text-sm cursor-pointer"
+                >
+                  Guardar Cambios
+                </button>
+              </form>
+
+              {/* Right Column: Vehicles management */}
+              <div className="space-y-6 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider border-b border-gray-800 pb-1.5 mb-3">Vehículos Registrados</h4>
+                  
+                  {/* List of current vehicles */}
+                  {editingUserVehicles.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic">No hay vehículos registrados para este usuario.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+                      {editingUserVehicles.map(v => (
+                        <div key={v.id_vehiculo} className="px-2.5 py-1.5 bg-slate-800/80 border border-gray-700/60 rounded-lg font-mono text-white text-xs">
+                          {v.placa_vehiculo}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Form to add vehicle */}
+                <form onSubmit={handleAdminAddVehicle} className="border-t border-gray-800 pt-4 space-y-3">
+                  <h5 className="text-xs font-semibold text-gray-300 font-medium">Asociar Nuevo Vehículo</h5>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="ABC-123"
+                      className="flex-grow rounded-lg px-3 py-2 border border-gray-650 bg-gray-850 text-white focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-xs uppercase font-mono"
+                      value={newVehiclePlate}
+                      onChange={(e) => setNewVehiclePlate(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                    >
+                      + Registrar
+                    </button>
+                  </div>
+                  {addVehicleError && <p className="text-red-400 text-[10px]">{addVehicleError}</p>}
+                </form>
+              </div>
+
             </div>
 
           </div>
