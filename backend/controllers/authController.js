@@ -200,7 +200,162 @@ const getMyVehicles = async (req, res) => {
 };
 
 const addVehicle = async (req, res) => {
-  return res.status(400).json({ message: 'No se permite registrar vehículos adicionales.' });
+  return res.status(400).json({ message: 'No se permite registrar vehículos adicionales desde el portal del cliente.' });
+};
+
+const adminAddVehicle = async (req, res) => {
+  const { userId, placa_vehiculo } = req.body;
+  if (!userId || !placa_vehiculo) {
+    return res.status(400).json({ message: 'El ID de usuario y la placa del vehículo son obligatorios' });
+  }
+
+  try {
+    const userResult = await db.query('SELECT id_persona FROM Usuario WHERE id_usuario = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    const id_persona = userResult.rows[0].id_persona;
+
+    const vehicleExists = await db.query('SELECT * FROM Vehiculo WHERE placa_vehiculo = $1', [placa_vehiculo.toUpperCase().trim()]);
+    if (vehicleExists.rows.length > 0) {
+      return res.status(400).json({ message: 'Esta placa de vehículo ya se encuentra registrada' });
+    }
+
+    const result = await db.query(
+      'INSERT INTO Vehiculo (id_persona, placa_vehiculo) VALUES ($1, $2) RETURNING id_vehiculo, placa_vehiculo',
+      [id_persona, placa_vehiculo.toUpperCase().trim()]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al registrar el vehículo' });
+  }
+};
+
+const getUserVehiclesByAdmin = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT V.id_vehiculo, V.placa_vehiculo 
+       FROM Vehiculo V 
+       JOIN persona p ON p.id_persona = V.id_persona 
+       JOIN usuario u ON u.id_persona = p.id_persona
+       WHERE u.id_usuario = $1`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener los vehículos del usuario' });
+  }
+};
+
+const adminUpdateUser = async (req, res) => {
+  const { id } = req.params;
+  const { 
+    email, 
+    password, 
+    primer_nombre, 
+    segundo_nombre, 
+    primer_apellido, 
+    segundo_apellido, 
+    documento_tipo, 
+    documento_numero 
+  } = req.body;
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Verificar si el usuario existe
+    const userResult = await client.query('SELECT id_persona, email FROM Usuario WHERE id_usuario = $1', [id]);
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    const { id_persona, email: currentEmail } = userResult.rows[0];
+
+    // 2. Si cambia el email, verificar que no esté duplicado
+    if (email && email !== currentEmail) {
+      const emailExists = await client.query('SELECT * FROM Usuario WHERE email = $1', [email]);
+      if (emailExists.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'El correo electrónico ya está registrado por otro usuario' });
+      }
+      await client.query('UPDATE Usuario SET email = $1 WHERE id_usuario = $2', [email, id]);
+    }
+
+    // 3. Si se proporciona contraseña, hashearla y actualizarla
+    if (password && password.trim() !== '') {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      await client.query('UPDATE Usuario SET contrasena = $1 WHERE id_usuario = $2', [hashedPassword, id]);
+    }
+
+    // 4. Actualizar datos de Persona si se proveen
+    if (primer_nombre || primer_apellido || segundo_apellido || documento_tipo || documento_numero) {
+      let id_documento = null;
+      if (documento_tipo) {
+        const docQuery = await client.query('SELECT id_documento FROM Documento WHERE tipo = $1', [documento_tipo]);
+        if (docQuery.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ message: 'El tipo de documento seleccionado no es válido' });
+        }
+        id_documento = docQuery.rows[0].id_documento;
+      }
+
+      // Validaciones del tipo de documento y número
+      if (documento_tipo && documento_numero) {
+        if (documento_tipo === 'DNI') {
+          if (!/^\d{8}$/.test(documento_numero)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'El DNI debe tener exactamente 8 dígitos numéricos.' });
+          }
+        } else if (documento_tipo === 'Pasaporte') {
+          if (!/^[a-zA-Z]{3}\d{6}$/.test(documento_numero)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'El Pasaporte debe tener exactamente 9 caracteres (3 letras y 6 números).' });
+          }
+        } else if (documento_tipo === 'Carnet de Extranjeria' || documento_tipo === 'Carnet de Extranjería') {
+          if (!/^\d{9}$/.test(documento_numero)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'El Carnet de Extranjería debe tener exactamente 9 dígitos numéricos.' });
+          }
+        }
+      }
+
+      // Actualizar Persona
+      await client.query(
+        `UPDATE Persona 
+         SET id_documento = COALESCE($1, id_documento), 
+             primer_nombre = COALESCE($2, primer_nombre), 
+             segundo_nombre = $3, 
+             primer_apellido = COALESCE($4, primer_apellido), 
+             segundo_apellido = COALESCE($5, segundo_apellido), 
+             numero_documento = COALESCE($6, numero_documento)
+         WHERE id_persona = $7`,
+        [
+          id_documento, 
+          primer_nombre || null, 
+          segundo_nombre || null, 
+          primer_apellido || null, 
+          segundo_apellido || null, 
+          documento_numero || null, 
+          id_persona
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Usuario actualizado exitosamente' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(error);
+    res.status(500).json({ message: 'Error en el servidor al actualizar usuario', error: error.message });
+  } finally {
+    client.release();
+  }
 };
 
 const getAllUsers = async (req, res) => {
@@ -221,4 +376,4 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getUserProfile, getDocumentTypes, getMyVehicles, addVehicle, getAllUsers };
+module.exports = { registerUser, loginUser, getUserProfile, getDocumentTypes, getMyVehicles, addVehicle, adminAddVehicle, getUserVehiclesByAdmin, adminUpdateUser, getAllUsers };

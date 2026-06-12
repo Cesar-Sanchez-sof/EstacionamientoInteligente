@@ -195,7 +195,7 @@ const Dashboard = () => {
         <div className="w-full md:w-96 space-y-6">
           {/* Vehículos del Usuario */}
           <div className="glass-panel p-6 rounded-xl">
-            <h3 className="text-xl font-bold mb-3">Mis Vehículos</h3>
+            <h3 className="text-xl font-bold mb-3 text-white">Mis Vehículos</h3>
             {vehicles.length === 0 ? (
               <p className="text-gray-400 text-xs mb-3">No tienes vehículos registrados.</p>
             ) : (
