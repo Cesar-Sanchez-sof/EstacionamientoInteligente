@@ -355,7 +355,7 @@ const AdminDashboard = () => {
             <div className="glass-panel p-6 rounded-xl">
               <h2 className="text-xl font-bold mb-4 text-white">Estado General de Cajones</h2>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={barChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis dataKey="name" stroke="#cbd5e1" />
@@ -378,7 +378,7 @@ const AdminDashboard = () => {
                 {pieChartData.length === 0 ? (
                   <p className="text-gray-400 text-sm">No hay datos de reservas disponibles.</p>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart>
                       <Pie
                         data={pieChartData}
