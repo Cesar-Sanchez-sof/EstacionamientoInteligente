@@ -30,7 +30,22 @@ const createReservation = async (req, res) => {
       return res.status(400).json({ message: 'No se puede reservar para la fecha u hora actual o en el pasado' });
     }
 
+    // Global capacity check for target date & time (Limit to > 50% free spots)
+    const totalSpotsRes = await db.query('SELECT COUNT(*) FROM Lugar');
+    const totalSpots = parseInt(totalSpotsRes.rows[0].count, 10);
 
+    const activeReservationsRes = await db.query(
+      "SELECT COUNT(*) FROM Reserva WHERE fecha = $1 AND hora = $2 AND estado IN ('Espera', 'Atendido')",
+      [fecha, hora]
+    );
+    const activeReservationsCount = parseInt(activeReservationsRes.rows[0].count, 10);
+    const freeSpotsAtTime = totalSpots - activeReservationsCount;
+
+    if (freeSpotsAtTime <= totalSpots * 0.5) {
+      return res.status(400).json({ 
+        message: `No se admiten reservas pero se encuentran ${freeSpotsAtTime} libres` 
+      });
+    }
 
     // Validate if the space is already occupied or reserved
     // 1. Check physical estado
