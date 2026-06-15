@@ -17,6 +17,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/spaces', spacesRoutes);
 app.use('/api/reservations', reservationsRoutes);
 
+// Root Route (Health Check)
+app.get('/', (req, res) => {
+  res.json({ message: 'API de Estacionamiento Inteligente activa y corriendo' });
+});
+
 // Error Handling Middleware (Basic)
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
