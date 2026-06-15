@@ -90,4 +90,56 @@ const updateSpaceStatus = async (req, res) => {
   }
 };
 
-module.exports = { getSpaces, updateSpaceStatus };
+// @desc    Get count of free/occupied spaces for IoT/ESP32 display (Public)
+// @route   GET /api/spaces/public/count
+// @access  Public
+const getPublicSpacesCount = async (req, res) => {
+  try {
+    // 1. Auto-expire reservations whose date and time have passed
+    const expiredRes = await db.query(`
+      UPDATE Reserva 
+      SET estado = 'Perdida', updated_at = CURRENT_TIMESTAMP 
+      WHERE estado = 'Espera' 
+        AND timezone('America/Bogota', fecha + hora) < CURRENT_TIMESTAMP
+      RETURNING id_lugar
+    `);
+
+    if (expiredRes.rows.length > 0) {
+      const expiredLugarIds = expiredRes.rows.map(r => r.id_lugar);
+      await db.query(
+        'UPDATE Lugar SET disponible = true WHERE id_lugar = ANY($1)',
+        [expiredLugarIds]
+      );
+    }
+
+    // Get all spaces
+    const spacesResult = await db.query('SELECT * FROM Lugar');
+    const spaces = spacesResult.rows;
+
+    // Get active reservations for today
+    const reservationsResult = await db.query(
+      `SELECT id_lugar FROM Reserva 
+       WHERE fecha >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')::date AND estado IN ('Espera', 'Atendido')`
+    );
+    const reservations = reservationsResult.rows;
+
+    let freeCount = 0;
+    spaces.forEach(space => {
+      const isReserved = reservations.some(r => r.id_lugar === space.id_lugar);
+      if (space.disponible && !isReserved) {
+        freeCount++;
+      }
+    });
+
+    res.json({
+      total: spaces.length,
+      free: freeCount,
+      occupied: spaces.length - freeCount
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener conteo de lugares' });
+  }
+};
+
+module.exports = { getSpaces, updateSpaceStatus, getPublicSpacesCount };
