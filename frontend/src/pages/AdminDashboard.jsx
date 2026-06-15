@@ -20,6 +20,10 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics', 'parking', 'users'
 
+  useEffect(() => {
+    document.title = 'Panel Administrativo - ParkFlow';
+  }, []);
+
   // Search filters
   const [resSearch, setResSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');

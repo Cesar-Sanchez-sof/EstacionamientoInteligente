@@ -15,6 +15,10 @@ const Dashboard = () => {
   const [reserveDate, setReserveDate] = useState('');
   const [reserveTime, setReserveTime] = useState('');
   
+  useEffect(() => {
+    document.title = 'Mi Estacionamiento - ParkFlow';
+  }, []);
+
   // Registrar nuevo vehículo
   const [newPlate, setNewPlate] = useState('');
   const [vehicleError, setVehicleError] = useState('');

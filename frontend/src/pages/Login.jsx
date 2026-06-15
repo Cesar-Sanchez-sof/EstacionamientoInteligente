@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
@@ -9,6 +9,10 @@ const Login = () => {
   const [error, setError] = useState('');
   const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = 'Iniciar Sesión - ParkFlow';
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
