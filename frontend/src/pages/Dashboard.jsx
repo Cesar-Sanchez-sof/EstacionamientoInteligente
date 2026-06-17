@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import ParkingLot from '../components/3d/ParkingLot';
 
 const Dashboard = () => {
   const user = useAuthStore((state) => state.user);
+  const bookingFormRef = useRef(null);
   const [spaces, setSpaces] = useState([]);
   const [myReservations, setMyReservations] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -98,6 +99,13 @@ const Dashboard = () => {
       
       setReserveDate(`${partMap.year}-${partMap.month}-${partMap.day}`);
       setReserveTime(`${partMap.hour}:${partMap.minute}`);
+
+      // Auto-scroll on mobile views
+      if (window.innerWidth < 768) {
+        setTimeout(() => {
+          bookingFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
     }
   };
 
@@ -186,13 +194,18 @@ const Dashboard = () => {
         
         {/* Left column: 3D Map */}
         <div className="flex-grow">
-          <h2 className="text-2xl font-bold mb-4">Croquis del Estacionamiento</h2>
-          <div className="mb-4 flex gap-4 text-sm font-medium">
-            <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#00ff66]"></div> Disponible</span>
-            <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#ff0055]"></div> Ocupado</span>
-            <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#00f3ff]"></div> Tu Reserva</span>
-          </div>
-          <ParkingLot spaces={spaces} onSelectSpace={handleSelectSpace} />
+            <h2 className="text-2xl font-bold mb-4">Croquis del Estacionamiento</h2>
+            <div className="mb-4 flex flex-wrap gap-4 text-sm font-medium">
+              <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#00ff66]"></div> Disponible</span>
+              <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#ff0055]"></div> Ocupado</span>
+              <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#00f3ff]"></div> Tu Reserva</span>
+              <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-[#eab308]"></div> Seleccionado (Vista previa)</span>
+            </div>
+            <ParkingLot 
+              spaces={spaces} 
+              onSelectSpace={handleSelectSpace} 
+              selectedSpace={selectedSpace} 
+            />
         </div>
 
         {/* Right column: Booking & History */}
@@ -221,7 +234,7 @@ const Dashboard = () => {
           </div>
 
           {/* Reservar Espacio */}
-          <div className="glass-panel p-6 rounded-xl">
+          <div ref={bookingFormRef} className="glass-panel p-6 rounded-xl">
             <h3 className="text-xl font-bold mb-4">Reservar Espacio</h3>
             {selectedSpace ? (
               <div className="space-y-4">
