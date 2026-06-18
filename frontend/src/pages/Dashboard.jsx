@@ -80,6 +80,11 @@ const Dashboard = () => {
   };
 
   const handleSelectSpace = (space) => {
+    if (selectedSpace && selectedSpace.id_lugar === space.id_lugar) {
+      setSelectedSpace(null);
+      setBookingError('');
+      return;
+    }
     if (space.statusColor === 'green') {
       setSelectedSpace(space);
       setBookingError('');
