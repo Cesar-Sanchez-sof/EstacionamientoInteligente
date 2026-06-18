@@ -8,6 +8,7 @@ const ParkingSpace = ({ position, number, statusColor, onClick }) => {
       case 'green': return '#00ff66';
       case 'red': return '#ff0055';
       case 'blue': return '#00f3ff';
+      case 'yellow': return '#eab308';
       default: return '#808080';
     }
   };
@@ -45,7 +46,7 @@ const ParkingSpace = ({ position, number, statusColor, onClick }) => {
   );
 };
 
-const ParkingLot = ({ spaces, onSelectSpace }) => {
+const ParkingLot = ({ spaces, onSelectSpace, selectedSpace }) => {
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-2xl glass-panel">
       <Canvas camera={{ position: [0, 10, 15], fov: 50 }}>
@@ -72,12 +73,15 @@ const ParkingLot = ({ spaces, onSelectSpace }) => {
           const x = col * 3.0 - 6.0;
           const z = row * 8.0 - 4.0;
 
+          const isSelected = selectedSpace && selectedSpace.id_lugar === space.id_lugar;
+          const finalColor = isSelected ? 'yellow' : space.statusColor;
+
           return (
             <ParkingSpace
               key={space.id_lugar}
               position={[x, 0, z]}
               number={space.numero}
-              statusColor={space.statusColor}
+              statusColor={finalColor}
               onClick={() => onSelectSpace(space)}
             />
           );
