@@ -1,8 +1,23 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 
 const ParkingSpace = ({ position, number, statusColor, onClick }) => {
+  const [hovered, setHovered] = useState(false);
+  const isSelectable = statusColor === 'green' || statusColor === 'yellow';
+  const isSelected = statusColor === 'yellow';
+
+  useEffect(() => {
+    if (hovered && isSelectable) {
+      document.body.style.cursor = 'pointer';
+    } else {
+      document.body.style.cursor = 'auto';
+    }
+    return () => {
+      document.body.style.cursor = 'auto';
+    };
+  }, [hovered, isSelectable]);
+
   const getHexColor = (colorStr) => {
     switch (colorStr) {
       case 'green': return '#00ff66';
@@ -13,22 +28,48 @@ const ParkingSpace = ({ position, number, statusColor, onClick }) => {
     }
   };
 
+  const targetY = (hovered && isSelectable) ? 0.25 : (isSelected ? 0.1 : 0);
+
   return (
-    <group position={position} onClick={onClick}>
+    <group 
+      position={[position[0], position[1] + targetY, position[2]]}
+      onClick={(e) => {
+        if (isSelectable) {
+          e.stopPropagation();
+          onClick();
+        }
+      }}
+      onPointerEnter={(e) => {
+        if (isSelectable) {
+          e.stopPropagation();
+          setHovered(true);
+        }
+      }}
+      onPointerLeave={(e) => {
+        e.stopPropagation();
+        setHovered(false);
+      }}
+    >
       {/* Base/Piso del espacio */}
       <mesh position={[0, 0.05, 0]}>
         <boxGeometry args={[2.5, 0.1, 5]} />
-        <meshStandardMaterial color={getHexColor(statusColor)} opacity={0.6} transparent />
+        <meshStandardMaterial 
+          color={getHexColor(statusColor)} 
+          opacity={statusColor === 'yellow' ? 0.95 : 0.6} 
+          transparent 
+          emissive={getHexColor(statusColor)}
+          emissiveIntensity={statusColor === 'yellow' ? 0.4 : (hovered && isSelectable ? 0.2 : 0.1)}
+        />
       </mesh>
       
       {/* Líneas delimitadoras */}
       <mesh position={[-1.25, 0.1, 0]}>
         <boxGeometry args={[0.1, 0.1, 5]} />
-        <meshStandardMaterial color="white" />
+        <meshStandardMaterial color={statusColor === 'yellow' ? '#eab308' : 'white'} />
       </mesh>
       <mesh position={[1.25, 0.1, 0]}>
         <boxGeometry args={[0.1, 0.1, 5]} />
-        <meshStandardMaterial color="white" />
+        <meshStandardMaterial color={statusColor === 'yellow' ? '#eab308' : 'white'} />
       </mesh>
 
       {/* Número */}
