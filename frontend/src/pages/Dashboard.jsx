@@ -88,7 +88,8 @@ const Dashboard = () => {
     if (space.statusColor === 'green') {
       setSelectedSpace(space);
       setBookingError('');
-      // Pre-llenar con la fecha y hora actuales en America/Bogota
+      // Pre-llenar con la fecha y hora de reserva establecidas en la hora actual + 1 minuto en America/Bogota
+      const nowPlusOneMinute = new Date(Date.now() + 60000);
       const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Bogota',
         year: 'numeric',
@@ -98,7 +99,7 @@ const Dashboard = () => {
         minute: '2-digit',
         hour12: false
       });
-      const parts = formatter.formatToParts(new Date());
+      const parts = formatter.formatToParts(nowPlusOneMinute);
       const partMap = {};
       parts.forEach(p => partMap[p.type] = p.value);
       
