@@ -28,6 +28,44 @@ const AdminDashboard = () => {
   const [resSearch, setResSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
+  // States for filtering reservations in the Pie Chart (Rendimiento e Historial de Reservas)
+  const [filterPeriod, setFilterPeriod] = useState('day'); // 'day', 'month', 'year', 'all'
+  const [filterDate, setFilterDate] = useState(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const partMap = {};
+    parts.forEach(p => partMap[p.type] = p.value);
+    return `${partMap.year}-${partMap.month}-${partMap.day}`;
+  });
+  
+  const [filterMonth, setFilterMonth] = useState(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const partMap = {};
+    parts.forEach(p => partMap[p.type] = p.value);
+    return `${partMap.year}-${partMap.month}`;
+  });
+
+  const [filterYear, setFilterYear] = useState(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const partMap = {};
+    parts.forEach(p => partMap[p.type] = p.value);
+    return partMap.year;
+  });
+
   // States for user registration from admin panel
   const [registerForm, setRegisterForm] = useState({
     primer_nombre: '',
@@ -240,20 +278,43 @@ const AdminDashboard = () => {
     { name: 'Reservas Activas', cantidad: reservations.filter(r => ['Espera', 'Atendido'].includes(r.estado)).length, fill: '#00f3ff' }
   ];
 
-  // Recharts: pie chart data of reservation states
-  const statusCounts = { Espera: 0, Atendido: 0, Cancelado: 0, Perdida: 0 };
-  reservations.forEach(r => {
-    if (statusCounts[r.estado] !== undefined) {
-      statusCounts[r.estado]++;
+  // Lógica de filtrado de reservas para la gráfica de rendimiento e historial
+  const filteredPieReservations = reservations.filter(res => {
+    if (!res.fecha) return false;
+    
+    // Parse fecha string safely to avoid timezone shift
+    const datePart = typeof res.fecha === 'string' ? res.fecha.split('T')[0] : '';
+    if (!datePart) return false;
+    const [rYear, rMonth, rDay] = datePart.split('-').map(Number);
+    const rMonthStr = rMonth < 10 ? `0${rMonth}` : `${rMonth}`;
+    const rDayStr = rDay < 10 ? `0${rDay}` : `${rDay}`;
+
+    if (filterPeriod === 'day') {
+      return `${rYear}-${rMonthStr}-${rDayStr}` === filterDate;
+    } else if (filterPeriod === 'month') {
+      return `${rYear}-${rMonthStr}` === filterMonth;
+    } else if (filterPeriod === 'year') {
+      return rYear.toString() === filterYear.toString();
+    }
+    return true; // 'all'
+  });
+
+  // Recharts: pie chart data of reservation states (filtered)
+  const pieStatusCounts = { Espera: 0, Atendido: 0, Cancelado: 0, Perdida: 0 };
+  filteredPieReservations.forEach(r => {
+    if (pieStatusCounts[r.estado] !== undefined) {
+      pieStatusCounts[r.estado]++;
     }
   });
 
   const pieChartData = [
-    { name: 'En Espera', value: statusCounts.Espera, color: '#f59e0b' },
-    { name: 'Atendidas', value: statusCounts.Atendido, color: '#10b981' },
-    { name: 'Canceladas', value: statusCounts.Cancelado, color: '#ef4444' },
-    { name: 'Perdidas', value: statusCounts.Perdida, color: '#f43f5e' }
+    { name: 'En Espera', value: pieStatusCounts.Espera, color: '#f59e0b' },
+    { name: 'Atendidas', value: pieStatusCounts.Atendido, color: '#10b981' },
+    { name: 'Canceladas', value: pieStatusCounts.Cancelado, color: '#ef4444' },
+    { name: 'Perdidas', value: pieStatusCounts.Perdida, color: '#f43f5e' }
   ].filter(item => item.value > 0);
+
+  const totalReservationsPeriod = filteredPieReservations.length;
 
   // Generate Activity Logs / Report Logs from reservations sorted chronologically
   const activityLogs = reservations.map(res => {
@@ -376,11 +437,78 @@ const AdminDashboard = () => {
             </div>
 
             {/* Reservas Status Pie Chart */}
-            <div className="glass-panel p-6 rounded-xl">
-              <h2 className="text-xl font-bold mb-4 text-white">Rendimiento e Historial de Reservas</h2>
-              <div className="h-64 flex items-center justify-center">
+            <div className="glass-panel p-6 rounded-xl flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <h2 className="text-xl font-bold text-white font-mono tracking-tight">Rendimiento e Historial de Reservas</h2>
+                  
+                  {/* Controles de filtro */}
+                  <div className="flex gap-2 items-center">
+                    <select
+                      className="rounded-lg px-2 py-1 border border-gray-700 bg-gray-900/60 text-white focus:outline-none text-xs"
+                      value={filterPeriod}
+                      onChange={(e) => setFilterPeriod(e.target.value)}
+                    >
+                      <option value="day">Diario</option>
+                      <option value="month">Mensual</option>
+                      <option value="year">Anual</option>
+                      <option value="all">Histórico</option>
+                    </select>
+
+                    {/* Inputs dinámicos */}
+                    {filterPeriod === 'day' && (
+                      <input
+                        type="date"
+                        className="rounded-lg px-2 py-1 border border-gray-700 bg-gray-900/60 text-white focus:outline-none text-xs w-32"
+                        value={filterDate}
+                        onChange={(e) => setFilterDate(e.target.value)}
+                      />
+                    )}
+                    {filterPeriod === 'month' && (
+                      <input
+                        type="month"
+                        className="rounded-lg px-2 py-1 border border-gray-700 bg-gray-900/60 text-white focus:outline-none text-xs w-32"
+                        value={filterMonth}
+                        onChange={(e) => setFilterMonth(e.target.value)}
+                      />
+                    )}
+                    {filterPeriod === 'year' && (
+                      <input
+                        type="number"
+                        min="2020"
+                        max="2100"
+                        className="rounded-lg px-2 py-1 border border-gray-700 bg-gray-900/60 text-white focus:outline-none text-xs w-20"
+                        value={filterYear}
+                        onChange={(e) => setFilterYear(e.target.value)}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Resumen de métricas del período */}
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  <div className="bg-slate-800/40 border border-gray-800/30 p-2 rounded-lg text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Total</p>
+                    <p className="text-base font-bold text-[var(--neon-blue)]">{totalReservationsPeriod}</p>
+                  </div>
+                  <div className="bg-slate-800/40 border border-gray-800/30 p-2 rounded-lg text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Espera</p>
+                    <p className="text-base font-bold text-amber-500">{pieStatusCounts.Espera}</p>
+                  </div>
+                  <div className="bg-slate-800/40 border border-gray-800/30 p-2 rounded-lg text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Atendidas</p>
+                    <p className="text-base font-bold text-emerald-500">{pieStatusCounts.Atendido}</p>
+                  </div>
+                  <div className="bg-slate-800/40 border border-gray-800/30 p-2 rounded-lg text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">Cancel/Perd</p>
+                    <p className="text-base font-bold text-red-500">{pieStatusCounts.Cancelado + pieStatusCounts.Perdida}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-56 flex items-center justify-center">
                 {pieChartData.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No hay datos de reservas disponibles.</p>
+                  <p className="text-gray-400 text-sm">No hay datos de reservas en este período.</p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart>
@@ -388,8 +516,8 @@ const AdminDashboard = () => {
                         data={pieChartData}
                         cx="50%"
                         cy="45%"
-                        innerRadius={60}
-                        outerRadius={80}
+                        innerRadius={55}
+                        outerRadius={75}
                         paddingAngle={5}
                         dataKey="value"
                       >
