@@ -74,13 +74,26 @@ const updateSpaceStatus = async (req, res) => {
     const { id } = req.params;
     const { disponible } = req.body; // boolean (true = disponible, false = ocupado)
 
+    // 1. Get current status to compare
+    const currentSpaceRes = await db.query('SELECT disponible, numero FROM Lugar WHERE id_lugar = $1', [id]);
+    if (currentSpaceRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Lugar no encontrado' });
+    }
+    const currentSpace = currentSpaceRes.rows[0];
+
+    // 2. Perform update
     const updatedSpace = await db.query(
       'UPDATE Lugar SET disponible = $1 WHERE id_lugar = $2 RETURNING *',
       [disponible, id]
     );
 
-    if (updatedSpace.rows.length === 0) {
-      return res.status(404).json({ message: 'Lugar no encontrado' });
+    // 3. Log the change if it changed
+    if (currentSpace.disponible !== disponible) {
+      const tipoMovimiento = disponible ? 'SALIDA' : 'INGRESO';
+      await db.query(
+        'INSERT INTO registro_vehicular (id_lugar, tipo) VALUES ($1, $2)',
+        [id, tipoMovimiento]
+      );
     }
 
     res.json(updatedSpace.rows[0]);
@@ -142,4 +155,72 @@ const getPublicSpacesCount = async (req, res) => {
   }
 };
 
-module.exports = { getSpaces, updateSpaceStatus, getPublicSpacesCount };
+// @desc    Get recent parking sensor logs (Admin)
+// @route   GET /api/spaces/logs
+// @access  Private/Admin
+const getSpacesLogs = async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT r.id_registro, r.tipo, r.fecha_hora, l.numero
+      FROM registro_vehicular r
+      JOIN Lugar l ON r.id_lugar = l.id_lugar
+      ORDER BY r.fecha_hora DESC
+      LIMIT 10
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener los logs de los espacios' });
+  }
+};
+
+// @desc    Get barrier status
+// @route   GET /api/spaces/barrier/status
+// @access  Private
+const getBarrierStatus = async (req, res) => {
+  try {
+    const result = await db.query('SELECT estado, updated_at FROM barrera WHERE id_barrera = 1');
+    if (result.rows.length === 0) {
+      await db.query("INSERT INTO barrera (id_barrera, estado) VALUES (1, 'CERRADA') ON CONFLICT DO NOTHING");
+      return res.json({ estado: 'CERRADA' });
+    }
+
+    const { estado, updated_at } = result.rows[0];
+    if (estado === 'ABIERTA') {
+      const secondsPassed = (new Date() - new Date(updated_at)) / 1000;
+      if (secondsPassed >= 5) {
+        await db.query("UPDATE barrera SET estado = 'CERRADA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 1");
+        return res.json({ estado: 'CERRADA' });
+      }
+    }
+    res.json({ estado });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al obtener el estado de la barrera' });
+  }
+};
+
+// @desc    Open barrier (Admin)
+// @route   POST /api/spaces/barrier/open
+// @access  Private/Admin
+const openBarrier = async (req, res) => {
+  try {
+    await db.query("INSERT INTO barrera (id_barrera, estado) VALUES (1, 'CERRADA') ON CONFLICT DO NOTHING");
+    const updated = await db.query(
+      "UPDATE barrera SET estado = 'ABIERTA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 1 RETURNING *"
+    );
+    res.json(updated.rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al abrir la barrera' });
+  }
+};
+
+module.exports = {
+  getSpaces,
+  updateSpaceStatus,
+  getPublicSpacesCount,
+  getSpacesLogs,
+  getBarrierStatus,
+  openBarrier
+};
