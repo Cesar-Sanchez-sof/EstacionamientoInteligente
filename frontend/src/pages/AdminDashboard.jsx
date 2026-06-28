@@ -101,9 +101,13 @@ const AdminDashboard = () => {
   const [addVehicleError, setAddVehicleError] = useState('');
 
   // IoT & Telemetry States
-  const [barrierStatus, setBarrierStatus] = useState('CERRADA');
+  const [barriers, setBarriers] = useState([
+    { id_barrera: 1, estado: 'CERRADA' },
+    { id_barrera: 2, estado: 'CERRADA' }
+  ]);
   const [sensorLogs, setSensorLogs] = useState([]);
-  const [barrierCountdown, setBarrierCountdown] = useState(null);
+  const [countdownEntrada, setCountdownEntrada] = useState(null);
+  const [countdownSalida, setCountdownSalida] = useState(null);
   const [barrierAlert, setBarrierAlert] = useState(null);
   const [alertTimeoutId, setAlertTimeoutId] = useState(null);
 
@@ -176,12 +180,17 @@ const AdminDashboard = () => {
     setAlertTimeoutId(timer);
   };
 
-  const handleOpenBarrier = async () => {
+  const handleOpenBarrier = async (barrierId) => {
     try {
-      await api.post('/spaces/barrier/open');
-      setBarrierStatus('ABIERTA');
-      setBarrierCountdown(5);
-      showTemporaryAlert('⚠️ Barrera Abierta - El vehículo puede ingresar', 'info');
+      await api.post('/spaces/barrier/open', { barrierId });
+      setBarriers(prev => prev.map(b => b.id_barrera === barrierId ? { ...b, estado: 'ABIERTA' } : b));
+      const name = barrierId === 1 ? 'Entrada' : 'Salida';
+      if (barrierId === 1) {
+        setCountdownEntrada(5);
+      } else {
+        setCountdownSalida(5);
+      }
+      showTemporaryAlert(`⚠️ Barrera de ${name} Abierta - El vehículo puede pasar`, 'info');
     } catch (err) {
       console.error('Error opening barrier', err);
       showTemporaryAlert('❌ Error al intentar abrir la barrera', 'error');
@@ -189,16 +198,28 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    if (barrierCountdown === null) return;
-    if (barrierCountdown === 0) {
-      setBarrierCountdown(null);
+    if (countdownEntrada === null) return;
+    if (countdownEntrada === 0) {
+      setCountdownEntrada(null);
       return;
     }
     const timer = setTimeout(() => {
-      setBarrierCountdown(prev => prev - 1);
+      setCountdownEntrada(prev => prev - 1);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [barrierCountdown]);
+  }, [countdownEntrada]);
+
+  useEffect(() => {
+    if (countdownSalida === null) return;
+    if (countdownSalida === 0) {
+      setCountdownSalida(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCountdownSalida(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [countdownSalida]);
 
   const fetchData = async () => {
     try {
@@ -215,7 +236,7 @@ const AdminDashboard = () => {
       setDocTypes(docTypesRes.data);
       setUsers(usersRes.data);
       setSensorLogs(logsRes.data);
-      setBarrierStatus(barrierRes.data.estado);
+      setBarriers(barrierRes.data);
       if (docTypesRes.data.length > 0 && !registerForm.documento_tipo) {
         setRegisterForm(prev => ({ ...prev, documento_tipo: docTypesRes.data[0] }));
       }
@@ -248,16 +269,22 @@ const AdminDashboard = () => {
         setSpaces(spacesRes.data);
         setSensorLogs(logsRes.data);
         
-        setBarrierStatus(prevStatus => {
-          const nextStatus = barrierRes.data.estado;
-          if (prevStatus !== nextStatus) {
-            if (nextStatus === 'ABIERTA') {
-              showTemporaryAlert('⚠️ Barrera Abierta - El vehículo puede ingresar', 'info');
-            } else if (nextStatus === 'CERRADA' && prevStatus === 'ABIERTA') {
-              showTemporaryAlert('🔒 Barrera Cerrada', 'success');
+        setBarriers(prevBarriers => {
+          const nextBarriers = barrierRes.data;
+          
+          nextBarriers.forEach(next => {
+            const prev = prevBarriers.find(p => p.id_barrera === next.id_barrera);
+            if (prev && prev.estado !== next.estado) {
+              const name = next.id_barrera === 1 ? 'Entrada' : 'Salida';
+              if (next.estado === 'ABIERTA') {
+                showTemporaryAlert(`⚠️ Barrera de ${name} Abierta`, 'info');
+              } else if (next.estado === 'CERRADA' && prev.estado === 'ABIERTA') {
+                showTemporaryAlert(`🔒 Barrera de ${name} Cerrada`, 'success');
+              }
             }
-          }
-          return nextStatus;
+          });
+          
+          return nextBarriers;
         });
       } catch (err) {
         console.error('Error polling admin data', err);
@@ -696,55 +723,104 @@ const AdminDashboard = () => {
               <div>
                 <h2 className="text-xl font-bold mb-2 text-white flex items-center gap-2">
                   <AlertCircle className="h-5 w-5 text-amber-400" />
-                  Control de Barrera de Acceso (IoT)
+                  Control de Barreras de Acceso (IoT)
                 </h2>
-                <p className="text-xs text-gray-400 mb-6">Abre de forma remota la barrera física de acceso. Se cerrará automáticamente tras 5 segundos.</p>
+                <p className="text-xs text-gray-400 mb-6">Abre de forma remota las barreras físicas de entrada o salida. Se cerrarán automáticamente tras 5 segundos.</p>
                 
-                {/* Visual Simulation of the Gate Barrier */}
-                <div className="relative w-full h-40 bg-slate-950/60 rounded-xl border border-gray-800/80 flex items-center justify-center overflow-hidden mb-6">
-                  {/* Roadway indicator */}
-                  <div className="absolute inset-x-0 bottom-0 h-4 bg-slate-900 border-t border-gray-800"></div>
+                {/* Two barriers side-by-side */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                   
-                  {/* Gate stand/post */}
-                  <div className="absolute left-[30%] bottom-[16px] w-6 h-16 bg-slate-700 rounded-t border-t border-gray-600 z-10">
-                    <div className="w-2 h-2 rounded-full bg-slate-950 mx-auto mt-2"></div>
-                  </div>
-                  
-                  {/* Gate Arm */}
-                  <div 
-                    className="absolute left-[32%] bottom-[24px] w-36 h-2 rounded origin-left transition-transform duration-700 ease-in-out z-0"
-                    style={{ 
-                      transform: barrierStatus === 'ABIERTA' ? 'rotate(-90deg)' : 'rotate(0deg)',
-                      background: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 10px, #000 10px, #000 20px)'
-                    }}
-                  ></div>
-                  
-                  {/* Status Indicator text on driveway */}
-                  <div className="absolute right-6 top-6 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-gray-800">
-                    <div className={`w-2.5 h-2.5 rounded-full ${barrierStatus === 'ABIERTA' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-300">
-                      Barrera: {barrierStatus}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                  {/* Barrier 1: Entrada */}
+                  {(() => {
+                    const bEntrada = barriers.find(b => b.id_barrera === 1) || { estado: 'CERRADA' };
+                    const isOpen = bEntrada.estado === 'ABIERTA';
+                    return (
+                      <div className="bg-slate-900/40 p-4 rounded-xl border border-gray-800 flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold text-white">1. Entrada</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${isOpen ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                            {bEntrada.estado}
+                          </span>
+                        </div>
+                        
+                        {/* Simulation Arm */}
+                        <div className="relative w-full h-28 bg-slate-950/60 rounded-lg border border-gray-800/80 flex items-center justify-center overflow-hidden">
+                          <div className="absolute inset-x-0 bottom-0 h-3 bg-slate-900 border-t border-gray-800"></div>
+                          <div className="absolute left-[20%] bottom-[12px] w-4 h-10 bg-slate-700 rounded-t border-t border-gray-600 z-10"></div>
+                          <div 
+                            className="absolute left-[21%] bottom-[16px] w-24 h-1.5 rounded origin-left transition-transform duration-700 ease-in-out z-0"
+                            style={{ 
+                              transform: isOpen ? 'rotate(-90deg)' : 'rotate(0deg)',
+                              background: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 6px, #000 6px, #000 12px)'
+                            }}
+                          ></div>
+                        </div>
 
-              <div>
-                <button
-                  onClick={handleOpenBarrier}
-                  disabled={barrierStatus === 'ABIERTA'}
-                  className={`w-full py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
-                    barrierStatus === 'ABIERTA'
-                      ? 'bg-slate-800 text-gray-500 border border-gray-700 cursor-not-allowed'
-                      : 'bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:bg-amber-400 active:scale-[0.98]'
-                  }`}
-                >
-                  <AlertCircle className="h-5 w-5" />
-                  {barrierStatus === 'ABIERTA' 
-                    ? `Cerrando automáticamente en ${barrierCountdown || 0}s` 
-                    : 'Abrir Barrera de Acceso'
-                  }
-                </button>
+                        <button
+                          onClick={() => handleOpenBarrier(1)}
+                          disabled={isOpen}
+                          className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            isOpen
+                              ? 'bg-slate-800 text-gray-500 border border-gray-700 cursor-not-allowed'
+                              : 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:bg-amber-400 active:scale-[0.98]'
+                          }`}
+                        >
+                          <AlertCircle className="h-4 w-4" />
+                          {isOpen 
+                            ? `Entrada (${countdownEntrada || 0}s)` 
+                            : 'Abrir Entrada'
+                          }
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Barrier 2: Salida */}
+                  {(() => {
+                    const bSalida = barriers.find(b => b.id_barrera === 2) || { estado: 'CERRADA' };
+                    const isOpen = bSalida.estado === 'ABIERTA';
+                    return (
+                      <div className="bg-slate-900/40 p-4 rounded-xl border border-gray-800 flex flex-col justify-between space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold text-white">2. Salida</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${isOpen ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                            {bSalida.estado}
+                          </span>
+                        </div>
+                        
+                        {/* Simulation Arm */}
+                        <div className="relative w-full h-28 bg-slate-950/60 rounded-lg border border-gray-800/80 flex items-center justify-center overflow-hidden">
+                          <div className="absolute inset-x-0 bottom-0 h-3 bg-slate-900 border-t border-gray-800"></div>
+                          <div className="absolute left-[20%] bottom-[12px] w-4 h-10 bg-slate-700 rounded-t border-t border-gray-600 z-10"></div>
+                          <div 
+                            className="absolute left-[21%] bottom-[16px] w-24 h-1.5 rounded origin-left transition-transform duration-700 ease-in-out z-0"
+                            style={{ 
+                              transform: isOpen ? 'rotate(-90deg)' : 'rotate(0deg)',
+                              background: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 6px, #000 6px, #000 12px)'
+                            }}
+                          ></div>
+                        </div>
+
+                        <button
+                          onClick={() => handleOpenBarrier(2)}
+                          disabled={isOpen}
+                          className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            isOpen
+                              ? 'bg-slate-800 text-gray-500 border border-gray-700 cursor-not-allowed'
+                              : 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:bg-amber-400 active:scale-[0.98]'
+                          }`}
+                        >
+                          <AlertCircle className="h-4 w-4" />
+                          {isOpen 
+                            ? `Salida (${countdownSalida || 0}s)` 
+                            : 'Abrir Salida'
+                          }
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                </div>
               </div>
             </div>
 

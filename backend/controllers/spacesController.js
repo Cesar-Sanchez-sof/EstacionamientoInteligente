@@ -179,24 +179,32 @@ const getSpacesLogs = async (req, res) => {
 // @access  Private
 const getBarrierStatus = async (req, res) => {
   try {
-    const result = await db.query('SELECT estado, updated_at FROM barrera WHERE id_barrera = 1');
-    if (result.rows.length === 0) {
-      await db.query("INSERT INTO barrera (id_barrera, estado) VALUES (1, 'CERRADA') ON CONFLICT DO NOTHING");
-      return res.json({ estado: 'CERRADA' });
+    const result = await db.query('SELECT id_barrera, estado, updated_at FROM barrera ORDER BY id_barrera ASC');
+    
+    // Auto-close check for each barrier
+    const processedBarriers = [];
+    for (const row of result.rows) {
+      let currentEstado = row.estado;
+      if (row.estado === 'ABIERTA') {
+        const secondsPassed = (new Date() - new Date(row.updated_at)) / 1000;
+        if (secondsPassed >= 5) {
+          await db.query(
+            "UPDATE barrera SET estado = 'CERRADA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = $1",
+            [row.id_barrera]
+          );
+          currentEstado = 'CERRADA';
+        }
+      }
+      processedBarriers.push({
+        id_barrera: row.id_barrera,
+        estado: currentEstado
+      });
     }
 
-    const { estado, updated_at } = result.rows[0];
-    if (estado === 'ABIERTA') {
-      const secondsPassed = (new Date() - new Date(updated_at)) / 1000;
-      if (secondsPassed >= 5) {
-        await db.query("UPDATE barrera SET estado = 'CERRADA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 1");
-        return res.json({ estado: 'CERRADA' });
-      }
-    }
-    res.json({ estado });
+    res.json(processedBarriers);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error al obtener el estado de la barrera' });
+    res.status(500).json({ message: 'Error al obtener el estado de las barreras' });
   }
 };
 
@@ -205,9 +213,19 @@ const getBarrierStatus = async (req, res) => {
 // @access  Private/Admin
 const openBarrier = async (req, res) => {
   try {
-    await db.query("INSERT INTO barrera (id_barrera, estado) VALUES (1, 'CERRADA') ON CONFLICT DO NOTHING");
+    const { barrierId } = req.body; // 1 = Entrada, 2 = Salida
+    if (!barrierId || ![1, 2].includes(Number(barrierId))) {
+      return res.status(400).json({ message: 'ID de barrera inválido. Debe ser 1 (Entrada) o 2 (Salida)' });
+    }
+
+    await db.query(
+      "INSERT INTO barrera (id_barrera, estado) VALUES ($1, 'CERRADA') ON CONFLICT (id_barrera) DO NOTHING",
+      [barrierId]
+    );
+
     const updated = await db.query(
-      "UPDATE barrera SET estado = 'ABIERTA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 1 RETURNING *"
+      "UPDATE barrera SET estado = 'ABIERTA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = $1 RETURNING *",
+      [barrierId]
     );
     res.json(updated.rows[0]);
   } catch (error) {
