@@ -100,6 +100,13 @@ const AdminDashboard = () => {
   const [editSuccess, setEditSuccess] = useState('');
   const [addVehicleError, setAddVehicleError] = useState('');
 
+  // IoT & Telemetry States
+  const [barrierStatus, setBarrierStatus] = useState('CERRADA');
+  const [sensorLogs, setSensorLogs] = useState([]);
+  const [barrierCountdown, setBarrierCountdown] = useState(null);
+  const [barrierAlert, setBarrierAlert] = useState(null);
+  const [alertTimeoutId, setAlertTimeoutId] = useState(null);
+
   const handleEditClick = async (u) => {
     setEditingUser(u);
     setEditError('');
@@ -158,18 +165,57 @@ const AdminDashboard = () => {
     }
   };
 
+  const showTemporaryAlert = (message, type) => {
+    if (alertTimeoutId) {
+      clearTimeout(alertTimeoutId);
+    }
+    setBarrierAlert({ message, type });
+    const timer = setTimeout(() => {
+      setBarrierAlert(null);
+    }, 3500);
+    setAlertTimeoutId(timer);
+  };
+
+  const handleOpenBarrier = async () => {
+    try {
+      await api.post('/spaces/barrier/open');
+      setBarrierStatus('ABIERTA');
+      setBarrierCountdown(5);
+      showTemporaryAlert('⚠️ Barrera Abierta - El vehículo puede ingresar', 'info');
+    } catch (err) {
+      console.error('Error opening barrier', err);
+      showTemporaryAlert('❌ Error al intentar abrir la barrera', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (barrierCountdown === null) return;
+    if (barrierCountdown === 0) {
+      setBarrierCountdown(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setBarrierCountdown(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [barrierCountdown]);
+
   const fetchData = async () => {
     try {
-      const [spacesRes, resRes, docTypesRes, usersRes] = await Promise.all([
+      const [spacesRes, resRes, docTypesRes, usersRes, logsRes, barrierRes] = await Promise.all([
         api.get('/spaces'),
         api.get('/reservations'),
         api.get('/auth/document-types'),
-        api.get('/auth/users')
+        api.get('/auth/users'),
+        api.get('/spaces/logs'),
+        api.get('/spaces/barrier/status')
       ]);
       setSpaces(spacesRes.data);
       setReservations(resRes.data);
       setDocTypes(docTypesRes.data);
       setUsers(usersRes.data);
+      setSensorLogs(logsRes.data);
+      setBarrierStatus(barrierRes.data.estado);
       if (docTypesRes.data.length > 0 && !registerForm.documento_tipo) {
         setRegisterForm(prev => ({ ...prev, documento_tipo: docTypesRes.data[0] }));
       }
@@ -188,11 +234,48 @@ const AdminDashboard = () => {
     fetchData();
   }, [user, navigate]);
 
+  // Polling for real-time sensor updates and barrier status
+  useEffect(() => {
+    if (!user || user.rol !== 'ADMIN') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const [spacesRes, logsRes, barrierRes] = await Promise.all([
+          api.get('/spaces'),
+          api.get('/spaces/logs'),
+          api.get('/spaces/barrier/status')
+        ]);
+        setSpaces(spacesRes.data);
+        setSensorLogs(logsRes.data);
+        
+        setBarrierStatus(prevStatus => {
+          const nextStatus = barrierRes.data.estado;
+          if (prevStatus !== nextStatus) {
+            if (nextStatus === 'ABIERTA') {
+              showTemporaryAlert('⚠️ Barrera Abierta - El vehículo puede ingresar', 'info');
+            } else if (nextStatus === 'CERRADA' && prevStatus === 'ABIERTA') {
+              showTemporaryAlert('🔒 Barrera Cerrada', 'success');
+            }
+          }
+          return nextStatus;
+        });
+      } catch (err) {
+        console.error('Error polling admin data', err);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [user]);
+
   const toggleSpaceStatus = async (id, currentStatus) => {
     try {
       await api.put(`/spaces/${id}`, { disponible: !currentStatus });
-      const spacesRes = await api.get('/spaces');
+      const [spacesRes, logsRes] = await Promise.all([
+        api.get('/spaces'),
+        api.get('/spaces/logs')
+      ]);
       setSpaces(spacesRes.data);
+      setSensorLogs(logsRes.data);
     } catch (error) {
       console.error('Error updating space', error);
     }
@@ -204,8 +287,12 @@ const AdminDashboard = () => {
       const resRes = await api.get('/reservations');
       setReservations(resRes.data);
       // Refresh spaces just in case status change freed/occupied a space
-      const spacesRes = await api.get('/spaces');
+      const [spacesRes, logsRes] = await Promise.all([
+        api.get('/spaces'),
+        api.get('/spaces/logs')
+      ]);
       setSpaces(spacesRes.data);
+      setSensorLogs(logsRes.data);
     } catch (error) {
       console.error('Error updating reservation status', error);
     }
@@ -366,7 +453,21 @@ const AdminDashboard = () => {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 relative">
+      {/* Alerta flotante de barrera */}
+      {barrierAlert && (
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-0 scale-100 ${
+          barrierAlert.type === 'success' 
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-emerald-500/10' 
+            : barrierAlert.type === 'error'
+            ? 'bg-red-500/10 border-red-500/30 text-red-400 shadow-red-500/10'
+            : 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-blue-500/10'
+        }`}>
+          <div className="w-2 h-2 rounded-full animate-ping bg-current"></div>
+          <span className="font-semibold text-sm">{barrierAlert.message}</span>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-700 pb-4">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Panel Administrativo</h1>
@@ -585,6 +686,117 @@ const AdminDashboard = () => {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Grid layout for Barrier Control and Sensor Activity Logs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Control de Barrera IoT */}
+            <div className="glass-panel p-6 rounded-xl flex flex-col justify-between">
+              <div>
+                <h2 className="text-xl font-bold mb-2 text-white flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-400" />
+                  Control de Barrera de Acceso (IoT)
+                </h2>
+                <p className="text-xs text-gray-400 mb-6">Abre de forma remota la barrera física de acceso. Se cerrará automáticamente tras 5 segundos.</p>
+                
+                {/* Visual Simulation of the Gate Barrier */}
+                <div className="relative w-full h-40 bg-slate-950/60 rounded-xl border border-gray-800/80 flex items-center justify-center overflow-hidden mb-6">
+                  {/* Roadway indicator */}
+                  <div className="absolute inset-x-0 bottom-0 h-4 bg-slate-900 border-t border-gray-800"></div>
+                  
+                  {/* Gate stand/post */}
+                  <div className="absolute left-[30%] bottom-[16px] w-6 h-16 bg-slate-700 rounded-t border-t border-gray-600 z-10">
+                    <div className="w-2 h-2 rounded-full bg-slate-950 mx-auto mt-2"></div>
+                  </div>
+                  
+                  {/* Gate Arm */}
+                  <div 
+                    className="absolute left-[32%] bottom-[24px] w-36 h-2 rounded origin-left transition-transform duration-700 ease-in-out z-0"
+                    style={{ 
+                      transform: barrierStatus === 'ABIERTA' ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      background: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 10px, #000 10px, #000 20px)'
+                    }}
+                  ></div>
+                  
+                  {/* Status Indicator text on driveway */}
+                  <div className="absolute right-6 top-6 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-gray-800">
+                    <div className={`w-2.5 h-2.5 rounded-full ${barrierStatus === 'ABIERTA' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-300">
+                      Barrera: {barrierStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <button
+                  onClick={handleOpenBarrier}
+                  disabled={barrierStatus === 'ABIERTA'}
+                  className={`w-full py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                    barrierStatus === 'ABIERTA'
+                      ? 'bg-slate-800 text-gray-500 border border-gray-700 cursor-not-allowed'
+                      : 'bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:bg-amber-400 active:scale-[0.98]'
+                  }`}
+                >
+                  <AlertCircle className="h-5 w-5" />
+                  {barrierStatus === 'ABIERTA' 
+                    ? `Cerrando automáticamente en ${barrierCountdown || 0}s` 
+                    : 'Abrir Barrera de Acceso'
+                  }
+                </button>
+              </div>
+            </div>
+
+            {/* Historial de Actividad de Sensores */}
+            <div className="glass-panel p-6 rounded-xl flex flex-col">
+              <h2 className="text-xl font-bold mb-2 text-white flex items-center gap-2">
+                <Clock className="h-5 w-5 text-indigo-400" />
+                Historial de Actividad de Sensores (IoT)
+              </h2>
+              <p className="text-xs text-gray-400 mb-4">Registro en tiempo real de cambios de presencia física detectados en cada cajón.</p>
+              
+              <div className="flex-grow space-y-3 overflow-y-auto max-h-[220px] pr-2 divide-y divide-gray-800">
+                {sensorLogs.length === 0 ? (
+                  <p className="text-gray-400 text-sm py-8 text-center">No hay actividad de sensores registrada.</p>
+                ) : (
+                  sensorLogs.map((log) => {
+                    const timeStr = new Date(log.fecha_hora).toLocaleTimeString('es-ES', {
+                      timeZone: 'America/Bogota',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit'
+                    });
+                    const isIngreso = log.tipo === 'INGRESO';
+                    return (
+                      <div key={log.id_registro} className="flex items-center justify-between pt-3 first:pt-0">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg border ${
+                            isIngreso 
+                              ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                              : 'bg-green-500/10 border-green-500/20 text-green-400'
+                          }`}>
+                            <Car className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-200">
+                              Lugar #{log.numero}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              Se cambió a <span className={`font-semibold ${isIngreso ? 'text-red-400' : 'text-green-400'}`}>
+                                {isIngreso ? 'ocupado' : 'disponible'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono text-gray-500">{timeStr}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Reservations Table */}

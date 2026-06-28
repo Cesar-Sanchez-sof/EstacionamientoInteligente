@@ -1,9 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { getSpaces, updateSpaceStatus, getPublicSpacesCount } = require('../controllers/spacesController');
+const { 
+  getSpaces, 
+  updateSpaceStatus, 
+  getPublicSpacesCount, 
+  getSpacesLogs, 
+  getBarrierStatus, 
+  openBarrier 
+} = require('../controllers/spacesController');
 const { protect, admin } = require('../middlewares/authMiddleware');
 
 router.get('/public/count', getPublicSpacesCount);
+router.get('/logs', protect, admin, getSpacesLogs);
+router.get('/barrier/status', protect, getBarrierStatus);
+router.post('/barrier/open', protect, admin, openBarrier);
+
 router.route('/').get(protect, getSpaces);
 router.route('/:id').put(protect, admin, updateSpaceStatus);
 
