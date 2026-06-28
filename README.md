@@ -33,10 +33,12 @@ La interfaz de usuario ha sido concebida bajo principios de **Diseño Futurista 
 3. **Gestión de Vehículos**: Vinculación de la placa vehicular obligatoria al registrarse.
 4. **Sincronización en Tiempo Real**: Consulta periódica automática (polling cada 10 segundos) para mantener la disponibilidad actualizada sin refrescar la página.
 
-### Para Administradores
-1. **Control de Espacios Físicos (Simulación de Sensores)**: Un panel interactivo que permite alternar el estado físico del lugar (`OCUPADO` / `LIBRE`), simulando la detección de un vehículo por sensor ultrasónico o cámara.
-2. **Dashboard Estadístico**: Gráfico de barras interactivo desarrollado con Recharts que muestra el estado de ocupación general, plazas libres y cantidad de reservas activas.
-3. **Gestión de Reservas Global**: Tabla de control para visualizar y cancelar reservas de cualquier usuario.
+### Para Administradores (IoT & Gestión)
+1. **Control de Espacios Físicos (Simulación de Sensores)**: Un panel interactivo que permite alternar el estado físico de los cajones (`OCUPADO` / `LIBRE`), simulando la telemetría del sensor físico.
+2. **Control Remoto de Barreras (Doble Acceso)**: Interfaz para abrir de forma remota e independiente la **Barrera de Entrada** (ID 1) y la **Barrera de Salida** (ID 2). Cuenta con animación gráfica en tiempo real y cierre automático temporizado tras 5 segundos.
+3. **Historial de Actividad de Sensores**: Registro dinámico que muestra en tiempo real cuándo ingresa o sale un vehículo de cada cajón, con marcas de tiempo formateadas.
+4. **Dashboard Estadístico**: Gráfico de barras interactivo desarrollado con Recharts que muestra el estado de ocupación general, plazas libres y cantidad de reservas activas.
+5. **Gestión de Reservas Global**: Tabla de control para visualizar y cancelar reservas de cualquier usuario.
 
 ---
 
@@ -45,26 +47,32 @@ La interfaz de usuario ha sido concebida bajo principios de **Diseño Futurista 
 El proyecto está dividido en dos partes principales:
 
 ### Frontend
-- **Framework & Builder**: React 19 + Vite (para compilación instantánea y HMR).
-- **Estilos**: Tailwind CSS v4 (con soporte directo de imports modernos y optimización CSS nativa en Vite).
-- **Modelado 3D**: Three.js, `@react-three/fiber` (declarativo para React) y `@react-three/drei` (helpers interactivos y de tipografía 3D).
+- **Framework & Builder**: React 19 + Vite.
+- **Estilos**: Tailwind CSS v4 (con optimización CSS nativa en Vite).
+- **Modelado 3D**: Three.js, `@react-three/fiber` y `@react-three/drei`.
 - **Gestión de Estado**: Zustand (gestión ligera y reactiva del estado de autenticación y token).
 - **Visualización de Datos**: Recharts (gráficos responsivos).
 - **Soporte Offline/PWA**: Configurado mediante `vite-plugin-pwa`.
 - **Cliente HTTP**: Axios (con interceptores para adjuntar dinámicamente el Token JWT).
 
 ### Backend
-- **Entorno de Ejecución**: Node.js con Express v5 (Web framework rápido y minimalista).
+- **Entorno de Ejecución**: Node.js con Express v5.
 - **Base de Datos**: PostgreSQL (Base de datos relacional robusta).
 - **Seguridad**: JWT (Tokens de acceso para autenticación) y Bcrypt (encriptación y hash de contraseñas).
 - **Validación**: Express Validator (validación robusta de formatos de entrada, tipos de documentos, etc.).
 - **Controladores de Base de Datos**: Módulo `pg` (Pool de conexiones).
 
+### Hardware / IoT
+- **Microcontrolador**: ESP32 NodeMCU (38 pines).
+- **Sensores**: Sensor de proximidad infrarrojo FC-51 (obstáculos) y Lector RFID RC522 (tarjetas de acceso).
+- **Actuadores**: Micro Servomotores SG90 (simulación física de barreras de acceso).
+- **Visualización**: Pantalla LCD 16x2 con adaptador I2C.
+
 ---
 
 ## 📊 Arquitectura de Base de Datos (PostgreSQL)
 
-El sistema emplea un esquema relacional normalizado estructurado en torno a las siguientes entidades:
+El sistema emplea un esquema relacional estructurado en torno a las siguientes entidades:
 
 ```mermaid
 erDiagram
@@ -74,6 +82,8 @@ erDiagram
     USUARIO ||--o{ RESERVA : "realiza"
     LUGAR ||--o{ RESERVA : "contiene"
     VEHICULO ||--o{ RESERVA : "se asigna a"
+    LUGAR ||--o{ REGISTRO_VEHICULAR : "registra actividad"
+    BARRERA ||--|| USUARIO : "operada por"
 
     DOCUMENTO {
         int id_documento PK
@@ -115,16 +125,43 @@ erDiagram
         varchar estado "Espera | Atendido | Cancelado | Perdida"
         timestamptz update_at
     }
+    REGISTRO_VEHICULAR {
+        int id_registro PK
+        int id_lugar FK
+        varchar tipo "INGRESO | SALIDA"
+        timestamptz fecha_hora
+    }
+    BARRERA {
+        int id_barrera PK
+        varchar estado "ABIERTA | CERRADA"
+        timestamptz updated_at
+    }
 ```
 
-### Reglas de Negocio Implementadas en Base de Datos:
-- **Restricción de Unicidad (`uq_reserva_lugar_tiempo`)**: Evita que se solapen reservas duplicadas para el mismo lugar en la misma fecha y hora (`id_lugar`, `fecha`, `hora`), ignorando aquellas con estado `'Cancelado'` o `'Perdida'`.
-- **Flujo de Estados de Reserva**: Por defecto, se crean en `'Espera'`. Cuenta con expiración automática (Lazy Expiration): cuando ha transcurrido la hora pactada de una reserva en espera, su estado cambia automáticamente a `'Perdida'`, liberando el cajón del estacionamiento. Los usuarios pueden cancelarlas (cambiando a `'Cancelado'`), y los administradores pueden cambiar el estado a cualquiera de los cuatro posibles (incluyendo `'Atendido'` al concretarse el ingreso físico).
-- **Validación Estricta de Documentos**:
-  - **DNI**: Exactamente 8 caracteres numéricos.
-  - **Pasaporte**: 9 caracteres (3 letras seguidas de 6 números).
-  - **Carnet de Extranjería**: Exactamente 9 caracteres numéricos.
-- **Vehículo Obligatorio**: Cada reserva requiere asociar una placa de vehículo activa vinculada a la persona que reserva.
+### Reglas de Negocio e Integración de Datos:
+- **Expiración de Reservas y Expiración Lazy**: Las reservas vencidas en estado `'Espera'` cambian automáticamente a `'Perdida'` tras la hora de reserva, liberando los cupos del estacionamiento.
+- **Historial de Sensores (`registro_vehicular`)**: Cada vez que el estado de disponibilidad de un cajón cambia (ya sea de forma física o simulada), el backend inserta un registro histórico del evento (`INGRESO` o `SALIDA`), el cual alimenta el feed de actividad del panel administrativo.
+- **Estados de Barrera (`barrera`)**: Almacena el estado remoto de la barrera de Entrada (ID 1) y Salida (ID 2). Cuenta con **auto-cierre perezoso (lazy auto-close)**: si una barrera permanece abierta más de 5 segundos, el servidor la cierra automáticamente en la base de datos para prevenir inconsistencias físicas de estado.
+
+---
+
+## 📡 Integración de Hardware & Firmware (ESP32)
+
+El microcontrolador **ESP32** está programado para interactuar directamente con la API web y los sensores físicos. Utiliza una arquitectura **Multitarea Multinúcleo (FreeRTOS)** para garantizar un rendimiento en tiempo real óptimo:
+
+### Arquitectura de Procesamiento (Doble Núcleo):
+- **Core 0 (Hilo de Red - Background)**:
+  - Realiza las consultas HTTPS lentas al servidor (handshake SSL/TLS y descargas).
+  - Consulta el estado de las barreras en `/api/spaces/barrier/status` cada 1.5 segundos.
+  - Consulta la disponibilidad de cupos cada 5 segundos.
+  - Al recibir un comando de apertura remota, activa banderas volátiles (`cmdAbrirEntrada`/`cmdAbrirSalida`) y actualiza las memorias de cerrojo (latches).
+- **Core 1 (Hilo Principal - Loop Físico)**:
+  - Lee instantáneamente los sensores FC-51 (Entrada en Pin 14, Salida en Pin 4) y el lector RFID RC522 (Pines 5 y 27) a frecuencias de microsegundos.
+  - Acciona los servomotores SG90 (Entrada en Pin 13, Salida en Pin 26) para abrir las barreras físicas al recibir detección de sensor local, tarjeta RFID, o la bandera remota levantada por el Core 0.
+  - Controla el tiempo físico de apertura (5 segundos estrictos) y repinta la pantalla LCD 16x2.
+
+> [!NOTE]
+> Al separar los hilos de red y hardware en núcleos separados, la placa nunca pierde la detección física de un vehículo o RFID mientras realiza las peticiones HTTP del servidor.
 
 ---
 
