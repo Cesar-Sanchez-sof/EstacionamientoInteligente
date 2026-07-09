@@ -62,7 +62,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 2500);
     return () => clearInterval(interval);
   }, [selectedVehicleId]);
 

@@ -234,11 +234,56 @@ const openBarrier = async (req, res) => {
   }
 };
 
+const getPublicSpacesStatus = async (req, res) => {
+  try {
+    const expiredRes = await db.query(`
+      UPDATE Reserva 
+      SET estado = 'Perdida', updated_at = CURRENT_TIMESTAMP 
+      WHERE estado = 'Espera' 
+        AND timezone('America/Bogota', fecha + hora) < CURRENT_TIMESTAMP
+      RETURNING id_lugar
+    `);
+
+    if (expiredRes.rows.length > 0) {
+      const expiredLugarIds = expiredRes.rows.map(r => r.id_lugar);
+      await db.query(
+        'UPDATE Lugar SET disponible = true WHERE id_lugar = ANY($1)',
+        [expiredLugarIds]
+      );
+    }
+
+    const spacesResult = await db.query('SELECT id_lugar, numero, disponible FROM Lugar ORDER BY numero ASC');
+    const spaces = spacesResult.rows;
+
+    const reservationsResult = await db.query(
+      `SELECT id_lugar FROM Reserva 
+       WHERE fecha >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')::date AND estado IN ('Espera', 'Atendido')`
+    );
+    const reservations = reservationsResult.rows;
+
+    const result = spaces.map(space => {
+      const hasReservation = reservations.some(r => r.id_lugar === space.id_lugar);
+      return {
+        id_lugar: space.id_lugar,
+        numero: space.numero,
+        disponible: space.disponible,
+        reservado: hasReservation
+      };
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Error fetching public spaces status:', error);
+    return res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   getSpaces,
   updateSpaceStatus,
   getPublicSpacesCount,
   getSpacesLogs,
   getBarrierStatus,
-  openBarrier
+  openBarrier,
+  getPublicSpacesStatus
 };

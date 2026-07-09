@@ -289,7 +289,7 @@ const AdminDashboard = () => {
       } catch (err) {
         console.error('Error polling admin data', err);
       }
-    }, 4000);
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [user]);
