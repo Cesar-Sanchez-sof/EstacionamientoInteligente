@@ -66,6 +66,17 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [selectedVehicleId]);
 
+  // Auto-deselect space if it becomes occupied or reserved in real-time by another user
+  useEffect(() => {
+    if (selectedSpace) {
+      const currentSpace = spaces.find(s => s.id_lugar === selectedSpace.id_lugar);
+      if (currentSpace && currentSpace.statusColor !== 'green') {
+        setSelectedSpace(null);
+        setBookingError('El espacio seleccionado acaba de ser reservado u ocupado por otro usuario.');
+      }
+    }
+  }, [spaces, selectedSpace]);
+
   const getTodayBogota = () => {
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Bogota',

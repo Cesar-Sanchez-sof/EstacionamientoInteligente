@@ -1,10 +1,12 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+const isUri = process.env.DB_HOST && (process.env.DB_HOST.startsWith('postgresql://') || process.env.DB_HOST.startsWith('postgres://'));
+
 const pool = new Pool(
-  process.env.DATABASE_URL
+  process.env.DATABASE_URL || isUri
     ? {
-        connectionString: process.env.DATABASE_URL,
+        connectionString: process.env.DATABASE_URL || process.env.DB_HOST,
         ssl: { rejectUnauthorized: false },
       }
     : {

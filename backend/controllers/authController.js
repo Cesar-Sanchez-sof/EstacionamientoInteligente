@@ -2,8 +2,8 @@ const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const generateToken = (id, rol) => {
-  return jwt.sign({ id, rol }, process.env.JWT_SECRET, {
+const generateToken = (id, rol, token_version = 0) => {
+  return jwt.sign({ id, rol, token_version }, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
 };
@@ -84,7 +84,7 @@ const registerUser = async (req, res) => {
 
     // Insert Usuario
     const newUser = await client.query(
-      'INSERT INTO Usuario (id_persona, email, contrasena, rol) VALUES ($1, $2, $3, $4) RETURNING id_usuario, email, rol',
+      'INSERT INTO Usuario (id_persona, email, contrasena, rol, token_version) VALUES ($1, $2, $3, $4, 0) RETURNING id_usuario, email, rol, token_version',
       [id_persona, email, hashedPassword, 'USER']
     );
 
@@ -96,7 +96,7 @@ const registerUser = async (req, res) => {
       rol: newUser.rows[0].rol,
       primer_nombre,
       primer_apellido,
-      token: generateToken(newUser.rows[0].id_usuario, newUser.rows[0].rol),
+      token: generateToken(newUser.rows[0].id_usuario, newUser.rows[0].rol, 0),
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -125,13 +125,20 @@ const loginUser = async (req, res) => {
     const user = result.rows[0];
 
     if (user && (await bcrypt.compare(password, user.contrasena))) {
+      // Increment token_version and retrieve new one
+      const updateRes = await db.query(
+        'UPDATE Usuario SET token_version = token_version + 1 WHERE id_usuario = $1 RETURNING token_version',
+        [user.id_usuario]
+      );
+      const tokenVersion = updateRes.rows[0].token_version;
+
       res.json({
         id: user.id_usuario,
         email: user.email,
         rol: user.rol,
         primer_nombre: user.primer_nombre,
         primer_apellido: user.primer_apellido,
-        token: generateToken(user.id_usuario, user.rol),
+        token: generateToken(user.id_usuario, user.rol, tokenVersion),
       });
     } else {
       res.status(401).json({ message: 'Credenciales inválidas' });
