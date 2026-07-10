@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import ParkingLot from '../components/3d/ParkingLot';
 
 const Dashboard = () => {
   const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
   const bookingFormRef = useRef(null);
   const [spaces, setSpaces] = useState([]);
   const [myReservations, setMyReservations] = useState([]);
@@ -15,6 +17,13 @@ const Dashboard = () => {
   const [bookingError, setBookingError] = useState('');
   const [reserveDate, setReserveDate] = useState('');
   const [reserveTime, setReserveTime] = useState('');
+
+  // Redirect admin users to the Admin Dashboard
+  useEffect(() => {
+    if (user && user.rol === 'ADMIN') {
+      navigate('/admin');
+    }
+  }, [user, navigate]);
   
   useEffect(() => {
     document.title = 'Mi Estacionamiento - ParkFlow';
