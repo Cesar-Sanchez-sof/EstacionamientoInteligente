@@ -118,7 +118,64 @@ const ZebraCrossing = ({ position }) => {
   );
 };
 
-const ParkingLot = ({ spaces, onSelectSpace, selectedSpace }) => {
+// Arbustos decorativos en las zonas beige
+const Shrub = ({ position }) => {
+  return (
+    <group position={position}>
+      {/* Hojas del arbusto */}
+      <mesh position={[0, 0.18, 0]}>
+        <sphereGeometry args={[0.24, 8, 8]} />
+        <meshStandardMaterial color="#2e7d32" roughness={0.9} />
+      </mesh>
+      {/* Tallo del arbusto */}
+      <mesh position={[0, 0.06, 0]}>
+        <cylinderGeometry args={[0.04, 0.04, 0.12, 8]} />
+        <meshStandardMaterial color="#5d4037" />
+      </mesh>
+    </group>
+  );
+};
+
+// Barreras físicas de entrada o salida
+const BarrierGate = ({ position, isOpen }) => {
+  const rotationZ = isOpen ? -Math.PI / 2 : 0;
+  return (
+    <group position={position}>
+      {/* Poste base de soporte */}
+      <mesh position={[0, 0.35, 0]}>
+        <cylinderGeometry args={[0.06, 0.08, 0.7, 8]} />
+        <meshStandardMaterial color="#2d3748" metalness={0.85} roughness={0.15} />
+      </mesh>
+      {/* Carcasa del motor del servo (naranja) */}
+      <mesh position={[0, 0.75, 0]}>
+        <boxGeometry args={[0.2, 0.2, 0.2]} />
+        <meshStandardMaterial color="#dd6b20" metalness={0.5} roughness={0.3} />
+      </mesh>
+      {/* Brazo Pivotante y Pluma */}
+      <group position={[0, 0.75, 0.11]} rotation={[0, 0, rotationZ]}>
+        {/* Barra pluma amarilla */}
+        <mesh position={[0.7, 0, 0]}>
+          <boxGeometry args={[1.4, 0.06, 0.03]} />
+          <meshStandardMaterial color="#f6e05e" roughness={0.5} />
+        </mesh>
+        {/* Franjas negras de precaución */}
+        {[-0.5, -0.2, 0.1, 0.4].map((offsetX, i) => (
+          <mesh key={i} position={[offsetX + 0.7, 0, 0.016]}>
+            <boxGeometry args={[0.1, 0.062, 0.005]} />
+            <meshBasicMaterial color="#1a202c" />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+};
+
+const ParkingLot = ({ spaces, onSelectSpace, selectedSpace, barriers = [] }) => {
+  const bEntrada = barriers.find(b => b.id_barrera === 1) || { estado: 'CERRADA' };
+  const bSalida = barriers.find(b => b.id_barrera === 2) || { estado: 'CERRADA' };
+  const isEntradaOpen = bEntrada.estado === 'ABIERTA';
+  const isSalidaOpen = bSalida.estado === 'ABIERTA';
+
   return (
     <div className="w-full h-[520px] rounded-xl overflow-hidden shadow-2xl glass-panel relative border border-gray-800">
       <Canvas camera={{ position: [0, 11, 14], fov: 48 }}>
@@ -138,6 +195,19 @@ const ParkingLot = ({ spaces, onSelectSpace, selectedSpace }) => {
           <planeGeometry args={[20, 16]} />
           <meshStandardMaterial color="#1e222b" roughness={0.85} metalness={0.1} />
         </mesh>
+
+        {/* --- MARCA DE AGUA DEL LOGO EN LA CALLE CENTRAL --- */}
+        <Text
+          position={[0, 0.012, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={2.5}
+          color="#ffffff"
+          opacity={0.06}
+          transparent
+          fontWeight="bold"
+        >
+          PARKFLOW
+        </Text>
 
         {/* --- SEÑALIZACIÓN VIAL (Líneas segmentadas blancas) --- */}
         {/* Calle Central (Horizontal, entre filas de cajones) */}
@@ -183,6 +253,49 @@ const ParkingLot = ({ spaces, onSelectSpace, selectedSpace }) => {
         {/* --- PASOS DE CEBRA (Entrada y Salida en zona superior) --- */}
         <ZebraCrossing position={[-4.5, 0, -6.8]} />
         <ZebraCrossing position={[4.5, 0, -6.8]} />
+
+        {/* --- BARRERAS PEATONALES / FÍSICAS IOT (Entrada y Salida) --- */}
+        {/* Barrera 1 (Entrada): Se monta al lado izquierdo de la entrada (x = -5.8, z = -5.7) */}
+        <BarrierGate position={[-5.8, 0, -5.7]} isOpen={isEntradaOpen} />
+
+        {/* Barrera 2 (Salida): Se monta al lado izquierdo de la salida (x = 3.2, z = -5.7) */}
+        <BarrierGate position={[3.2, 0, -5.7]} isOpen={isSalidaOpen} />
+
+        {/* --- ZONAS DE INGRESO Y SALIDA (Color #C1AD92 con plantitas) --- */}
+        {/* Zona Beige Izquierda */}
+        <group>
+          <mesh position={[-7.5, 0.008, -6.8]}>
+            <boxGeometry args={[1.8, 0.016, 2.2]} />
+            <meshStandardMaterial color="#C1AD92" roughness={0.9} />
+          </mesh>
+          <Shrub position={[-8.0, 0, -7.4]} />
+          <Shrub position={[-7.2, 0, -7.0]} />
+          <Shrub position={[-7.9, 0, -6.2]} />
+        </group>
+
+        {/* Zona Beige Central */}
+        <group>
+          <mesh position={[0, 0.008, -6.8]}>
+            <boxGeometry args={[5.2, 0.016, 2.2]} />
+            <meshStandardMaterial color="#C1AD92" roughness={0.9} />
+          </mesh>
+          <Shrub position={[-2.0, 0, -7.4]} />
+          <Shrub position={[-1.0, 0, -6.6]} />
+          <Shrub position={[0, 0, -7.2]} />
+          <Shrub position={[1.0, 0, -6.6]} />
+          <Shrub position={[2.0, 0, -7.4]} />
+        </group>
+
+        {/* Zona Beige Derecha */}
+        <group>
+          <mesh position={[7.5, 0.008, -6.8]}>
+            <boxGeometry args={[1.8, 0.016, 2.2]} />
+            <meshStandardMaterial color="#C1AD92" roughness={0.9} />
+          </mesh>
+          <Shrub position={[7.2, 0, -7.0]} />
+          <Shrub position={[8.0, 0, -7.4]} />
+          <Shrub position={[7.9, 0, -6.2]} />
+        </group>
 
         {/* --- RENDER DE CAJONES DE ESTACIONAMIENTO --- */}
         {spaces.map((space, index) => {
