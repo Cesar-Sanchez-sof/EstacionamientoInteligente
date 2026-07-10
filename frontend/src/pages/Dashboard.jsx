@@ -17,10 +17,6 @@ const Dashboard = () => {
   const [bookingError, setBookingError] = useState('');
   const [reserveDate, setReserveDate] = useState('');
   const [reserveTime, setReserveTime] = useState('');
-  const [barriers, setBarriers] = useState([
-    { id_barrera: 1, estado: 'CERRADA' },
-    { id_barrera: 2, estado: 'CERRADA' }
-  ]);
 
   // Redirect admin users to the Admin Dashboard
   useEffect(() => {
@@ -42,8 +38,7 @@ const Dashboard = () => {
       const results = await Promise.allSettled([
         api.get('/spaces'),
         api.get('/reservations/myreservations'),
-        api.get('/auth/myvehicles'),
-        api.get('/spaces/barrier/status')
+        api.get('/auth/myvehicles')
       ]);
 
       if (results[0].status === 'fulfilled') {
@@ -66,12 +61,6 @@ const Dashboard = () => {
         }
       } else {
         console.error('Error loading vehicles:', results[2].reason);
-      }
-
-      if (results[3].status === 'fulfilled') {
-        setBarriers(results[3].value.data);
-      } else {
-        console.error('Error loading barrier status:', results[3].reason);
       }
     } catch (error) {
       console.error('Unexpected error fetching dashboard data:', error);
@@ -242,7 +231,6 @@ const Dashboard = () => {
               spaces={spaces} 
               onSelectSpace={handleSelectSpace} 
               selectedSpace={selectedSpace} 
-              barriers={barriers}
             />
         </div>
 
