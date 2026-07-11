@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, Legend 
 } from 'recharts';
 import { 
-  Users, BarChart3, Car, Search, CheckCircle, XCircle, AlertCircle, Clock
+  Users, BarChart3, Car, Search, CheckCircle, XCircle, AlertCircle, Clock, Calendar, FileText, Download
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -18,7 +18,69 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [docTypes, setDocTypes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('analytics'); // 'analytics', 'parking', 'users'
+  const [activeTab, setActiveTab] = useState('analytics'); // 'analytics', 'parking', 'users', 'reports'
+
+  // Estados para reportes históricos de uso
+  const [reportType, setReportType] = useState('dia'); // 'dia', 'mes', 'anio'
+  const [reportDate, setReportDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  const [reportMonth, setReportMonth] = useState((new Date().getMonth() + 1).toString());
+  const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
+  const [reportData, setReportData] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+
+  const fetchReportData = async () => {
+    setReportLoading(true);
+    setReportError('');
+    try {
+      let params = { tipo: reportType };
+      if (reportType === 'dia') params.fecha = reportDate;
+      else if (reportType === 'mes') {
+        params.mes = reportMonth;
+        params.anio = reportYear;
+      } else if (reportType === 'anio') {
+        params.anio = reportYear;
+      }
+      
+      const res = await api.get('/spaces/reports/usage', { params });
+      setReportData(res.data);
+    } catch (err) {
+      console.error('Error fetching usage report:', err);
+      setReportError(err.response?.data?.message || 'Error al obtener el reporte de uso histórico.');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const exportToCSV = () => {
+    if (reportData.length === 0) return;
+    
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+    csvContent += "Cajón,Tiempo Ocupado (Horas),Tiempo Libre (Horas),Utilización (%),Reservas Totales,Reservas Atendidas,Reservas Canceladas/Perdidas\n";
+    
+    reportData.forEach(row => {
+      const occupiedHrs = (row.tiempoOcupadoMs / (1000 * 60 * 60)).toFixed(1);
+      const freeHrs = (row.tiempoLibreMs / (1000 * 60 * 60)).toFixed(1);
+      csvContent += `${row.numero},${occupiedHrs},${freeHrs},${row.porcentajeUtilizacion}%,${row.totalReservas},${row.reservasAtendidas},${row.reservasCanceladas}\n`;
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `reporte_uso_estacionamiento_${reportType}_${reportType === 'dia' ? reportDate : reportYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReportData();
+    }
+  }, [activeTab, reportType, reportDate, reportMonth, reportYear]);
 
   useEffect(() => {
     document.title = 'Panel Administrativo - ParkFlow';
@@ -535,6 +597,17 @@ const AdminDashboard = () => {
           >
             <Users size={16} />
             Gestión de Usuarios
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-1 md:flex-none ${
+              activeTab === 'reports'
+                ? 'bg-[var(--neon-blue)] text-black shadow-[0_0_15px_rgba(0,243,255,0.3)]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <FileText size={16} />
+            Reportes de Uso
           </button>
         </div>
       </div>
@@ -1382,6 +1455,319 @@ const AdminDashboard = () => {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* TAB 4: HISTORICAL REPORTS */}
+      {activeTab === 'reports' && (
+        <div className="space-y-6">
+          {/* Filters Bar */}
+          <div className="glass-panel p-6 rounded-xl border border-gray-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Calendar className="text-[var(--neon-blue)]" size={20} />
+                  Filtros de Reporte Histórico
+                </h2>
+                <p className="text-xs text-gray-400">Selecciona el rango de tiempo para generar las estadísticas de uso por cajón</p>
+              </div>
+              
+              {/* CSV Export Button */}
+              {reportData.length > 0 && (
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-[0_0_10px_rgba(16,185,129,0.2)] cursor-pointer"
+                >
+                  <Download size={14} />
+                  Exportar CSV
+                </button>
+              )}
+            </div>
+
+            {/* Filter Selectors */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Tipo de Filtro</label>
+                <div className="flex bg-slate-950/60 p-1 rounded-lg border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setReportType('dia')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      reportType === 'dia' ? 'bg-[var(--neon-blue)] text-black font-bold shadow-md' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Día
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportType('mes')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      reportType === 'mes' ? 'bg-[var(--neon-blue)] text-black font-bold shadow-md' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Mes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportType('anio')}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      reportType === 'anio' ? 'bg-[var(--neon-blue)] text-black font-bold shadow-md' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Año
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic Filter Controls */}
+              {reportType === 'dia' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Seleccionar Fecha</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-slate-950/80 text-white text-xs focus:outline-none focus:ring-1 focus:ring-[var(--neon-blue)]"
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {reportType === 'mes' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Seleccionar Mes</label>
+                    <select
+                      className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-slate-950/80 text-white text-xs focus:outline-none focus:ring-1 focus:ring-[var(--neon-blue)]"
+                      value={reportMonth}
+                      onChange={(e) => setReportMonth(e.target.value)}
+                    >
+                      <option value="1">Enero</option>
+                      <option value="2">Febrero</option>
+                      <option value="3">Marzo</option>
+                      <option value="4">Abril</option>
+                      <option value="5">Mayo</option>
+                      <option value="6">Junio</option>
+                      <option value="7">Julio</option>
+                      <option value="8">Agosto</option>
+                      <option value="9">Septiembre</option>
+                      <option value="10">Octubre</option>
+                      <option value="11">Noviembre</option>
+                      <option value="12">Diciembre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Seleccionar Año</label>
+                    <select
+                      className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-slate-950/80 text-white text-xs focus:outline-none focus:ring-1 focus:ring-[var(--neon-blue)]"
+                      value={reportYear}
+                      onChange={(e) => setReportYear(e.target.value)}
+                    >
+                      <option value="2025">2025</option>
+                      <option value="2026">2026</option>
+                      <option value="2027">2027</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {reportType === 'anio' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Seleccionar Año</label>
+                  <select
+                    className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-slate-950/80 text-white text-xs focus:outline-none focus:ring-1 focus:ring-[var(--neon-blue)]"
+                    value={reportYear}
+                    onChange={(e) => setReportYear(e.target.value)}
+                  >
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {reportLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[var(--neon-blue)]"></div>
+              <p className="text-gray-400 text-sm">Procesando registros históricos...</p>
+            </div>
+          ) : reportError ? (
+            <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-2">
+              <AlertCircle className="mx-auto text-red-500" size={32} />
+              <p className="text-red-400 font-semibold">{reportError}</p>
+              <button
+                onClick={fetchReportData}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-bold rounded-lg text-xs cursor-pointer"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : reportData.length === 0 ? (
+            <div className="glass-panel p-12 rounded-xl text-center space-y-2">
+              <Clock className="mx-auto text-gray-500" size={40} />
+              <p className="text-gray-400 font-semibold">No se encontraron registros en el periodo seleccionado.</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                  <span className="text-xs font-semibold text-gray-400 uppercase">Utilización Promedio</span>
+                  <div className="mt-2 flex items-baseline">
+                    <span className="text-3xl font-extrabold text-white">
+                      {(reportData.reduce((acc, r) => acc + r.porcentajeUtilizacion, 0) / reportData.length).toFixed(1)}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">Uso de cajones promedio en el periodo</p>
+                </div>
+
+                {/* Most Used Spot (Time) */}
+                {(() => {
+                  const sortedByTime = [...reportData].sort((a, b) => b.tiempoOcupadoMs - a.tiempoOcupadoMs);
+                  const topTime = sortedByTime[0];
+                  return (
+                    <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                      <span className="text-xs font-semibold text-gray-400 uppercase">Cajón Más Usado (Horas)</span>
+                      <div className="mt-2 flex items-baseline">
+                        <span className="text-3xl font-extrabold text-green-400">
+                          #{topTime?.numero || '-'}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          ({(topTime?.tiempoOcupadoMs / (1000 * 60 * 60)).toFixed(1)}h)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">Cajón con mayor tiempo físico ocupado</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Most Reserved Spot */}
+                {(() => {
+                  const sortedByRes = [...reportData].sort((a, b) => b.totalReservas - a.totalReservas);
+                  const topRes = sortedByRes[0];
+                  return (
+                    <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                      <span className="text-xs font-semibold text-gray-400 uppercase">Cajón Más Reservado</span>
+                      <div className="mt-2 flex items-baseline">
+                        <span className="text-3xl font-extrabold text-indigo-400">
+                          #{topRes?.numero || '-'}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          ({topRes?.totalReservas || 0} res.)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">Plaza con mayor cantidad de reservas</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Total Reservations */}
+                <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                  <span className="text-xs font-semibold text-gray-400 uppercase">Total de Reservas</span>
+                  <div className="mt-2 flex items-baseline">
+                    <span className="text-3xl font-extrabold text-white">
+                      {reportData.reduce((acc, r) => acc + r.totalReservas, 0)}
+                    </span>
+                    <span className="text-xs text-emerald-400 ml-2">
+                      ({reportData.reduce((acc, r) => acc + r.reservasAtendidas, 0)} exitosas)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">Reservas gestionadas en el periodo</p>
+                </div>
+              </div>
+
+              {/* Charts Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="glass-panel p-6 rounded-xl border border-gray-800">
+                  <h3 className="text-lg font-bold text-white mb-4">Porcentaje de Utilización por Cajón</h3>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="numero" stroke="#94a3b8" />
+                        <YAxis stroke="#94a3b8" />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} />
+                        <Bar dataKey="porcentajeUtilizacion" fill="#00f3ff" radius={[4, 4, 0, 0]} name="Utilización (%)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="glass-panel p-6 rounded-xl border border-gray-800">
+                  <h3 className="text-lg font-bold text-white mb-4">Distribución de Tiempo Ocupado vs. Libre</h3>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.map(r => ({
+                        Cajón: `C. ${r.numero}`,
+                        Ocupado: Number((r.tiempoOcupadoMs / (1000 * 60 * 60)).toFixed(1)),
+                        Libre: Number((r.tiempoLibreMs / (1000 * 60 * 60)).toFixed(1))
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="Cajón" stroke="#94a3b8" />
+                        <YAxis stroke="#94a3b8" />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} />
+                        <Legend wrapperStyle={{ color: '#fff' }} />
+                        <Bar dataKey="Ocupado" stackId="a" fill="#10b981" name="Horas Ocupado" />
+                        <Bar dataKey="Libre" stackId="a" fill="#64748b" name="Horas Libre" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table details */}
+              <div className="glass-panel rounded-xl border border-gray-800 overflow-hidden">
+                <div className="p-5 border-b border-gray-800 flex justify-between items-center">
+                  <h3 className="text-lg font-bold text-white">Detalle de Uso de Cajones</h3>
+                  <span className="text-xs text-gray-400">Total: {reportData.length} cajones activos</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-900/60 border-b border-gray-800 text-gray-400 font-semibold uppercase text-xs">
+                        <th className="py-3.5 px-5">Cajón</th>
+                        <th className="py-3.5 px-5">Tiempo Ocupado</th>
+                        <th className="py-3.5 px-5">Tiempo Libre</th>
+                        <th className="py-3.5 px-5">Utilización (%)</th>
+                        <th className="py-3.5 px-5 text-center">Total Reservas</th>
+                        <th className="py-3.5 px-5 text-center">Atendidas</th>
+                        <th className="py-3.5 px-5 text-center">Canceladas/Perdidas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/60 text-white">
+                      {reportData.map((row) => {
+                        const occupiedHrs = (row.tiempoOcupadoMs / (1000 * 60 * 60)).toFixed(1);
+                        const freeHrs = (row.tiempoLibreMs / (1000 * 60 * 60)).toFixed(1);
+                        
+                        return (
+                          <tr key={row.id_lugar} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3.5 px-5 font-bold text-[var(--neon-blue)]">Cajón #{row.numero}</td>
+                            <td className="py-3.5 px-5 font-mono">{occupiedHrs} h</td>
+                            <td className="py-3.5 px-5 font-mono">{freeHrs} h</td>
+                            <td className="py-3.5 px-5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">{row.porcentajeUtilizacion}%</span>
+                                <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                  <div 
+                                    className="bg-[var(--neon-blue)] h-1.5 rounded-full" 
+                                    style={{ width: `${Math.min(row.porcentajeUtilizacion, 100)}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-5 text-center font-mono font-semibold">{row.totalReservas}</td>
+                            <td className="py-3.5 px-5 text-center font-mono text-emerald-400">{row.reservasAtendidas}</td>
+                            <td className="py-3.5 px-5 text-center font-mono text-rose-400">{row.reservasCanceladas}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
