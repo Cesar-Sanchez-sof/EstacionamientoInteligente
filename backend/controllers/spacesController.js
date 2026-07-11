@@ -278,6 +278,120 @@ const getPublicSpacesStatus = async (req, res) => {
   }
 };
 
+const getHistoricalUsageReport = async (req, res) => {
+  try {
+    const { tipo, fecha, mes, anio } = req.query;
+
+    let startDate, endDate;
+    let totalPeriodMs;
+
+    if (tipo === 'dia') {
+      if (!fecha) {
+        return res.status(400).json({ message: 'Fecha es requerida para reporte diario' });
+      }
+      startDate = new Date(`${fecha}T00:00:00-05:00`);
+      endDate = new Date(`${fecha}T23:59:59-05:00`);
+      totalPeriodMs = 24 * 60 * 60 * 1000;
+    } else if (tipo === 'mes') {
+      if (!anio || !mes) {
+        return res.status(400).json({ message: 'Año y mes son requeridos para reporte mensual' });
+      }
+      const yearNum = Number(anio);
+      const monthNum = Number(mes) - 1;
+      startDate = new Date(yearNum, monthNum, 1, 0, 0, 0);
+      endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59);
+      totalPeriodMs = endDate.getTime() - startDate.getTime();
+    } else if (tipo === 'anio') {
+      if (!anio) {
+        return res.status(400).json({ message: 'Año es requerido para reporte anual' });
+      }
+      const yearNum = Number(anio);
+      startDate = new Date(yearNum, 0, 1, 0, 0, 0);
+      endDate = new Date(yearNum, 11, 31, 23, 59, 59);
+      totalPeriodMs = endDate.getTime() - startDate.getTime();
+    } else {
+      return res.status(400).json({ message: 'Tipo de reporte inválido. Debe ser dia, mes o anio' });
+    }
+
+    const spacesRes = await db.query('SELECT id_lugar, numero FROM Lugar ORDER BY numero ASC');
+    const spaces = spacesRes.rows;
+
+    const occupancyRes = await db.query(`
+      WITH paired_events AS (
+          SELECT 
+              id_lugar,
+              tipo,
+              fecha_hora,
+              LEAD(tipo) OVER (PARTITION BY id_lugar ORDER BY fecha_hora) AS next_tipo,
+              LEAD(fecha_hora) OVER (PARTITION BY id_lugar ORDER BY fecha_hora) AS next_fecha_hora
+          FROM registro_vehicular
+          WHERE fecha_hora >= $1 AND fecha_hora <= $2
+      )
+      SELECT 
+          id_lugar,
+          COALESCE(SUM(EXTRACT(EPOCH FROM (next_fecha_hora - fecha_hora)) * 1000), 0) AS tiempo_ocupado_ms
+      FROM paired_events
+      WHERE tipo = 'INGRESO' AND next_tipo = 'SALIDA'
+      GROUP BY id_lugar
+    `, [startDate.toISOString(), endDate.toISOString()]);
+    const occupancyMap = {};
+    occupancyRes.rows.forEach(r => {
+      occupancyMap[r.id_lugar] = Number(r.tiempo_ocupado_ms);
+    });
+
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    const reservationsRes = await db.query(`
+      SELECT 
+          id_lugar,
+          COUNT(*) AS total_reservas,
+          COUNT(*) FILTER (WHERE estado = 'Atendido') AS reservas_atendidas,
+          COUNT(*) FILTER (WHERE estado IN ('Cancelado', 'Perdida')) AS reservas_no_atendidas
+      FROM reserva
+      WHERE fecha >= $1::date AND fecha <= $2::date
+      GROUP BY id_lugar
+    `, [startStr, endStr]);
+    const reservationMap = {};
+    reservationsRes.rows.forEach(r => {
+      reservationMap[r.id_lugar] = {
+        total: Number(r.total_reservas),
+        atendidas: Number(r.reservas_atendidas),
+        noAtendidas: Number(r.reservas_no_atendidas)
+      };
+    });
+
+    const report = spaces.map(space => {
+      const id = space.id_lugar;
+      let tiempoOcupadoMs = occupancyMap[id] || 0;
+      
+      if (tiempoOcupadoMs > totalPeriodMs) {
+        tiempoOcupadoMs = totalPeriodMs;
+      }
+      
+      const tiempoLibreMs = totalPeriodMs - tiempoOcupadoMs;
+      const porcentajeUtilizacion = Number(((tiempoOcupadoMs / totalPeriodMs) * 100).toFixed(1));
+      
+      const resData = reservationMap[id] || { total: 0, atendidas: 0, noAtendidas: 0 };
+
+      return {
+        id_lugar: id,
+        numero: space.numero,
+        tiempoOcupadoMs,
+        tiempoLibreMs,
+        porcentajeUtilizacion,
+        totalReservas: resData.total,
+        reservasAtendidas: resData.atendidas,
+        reservasCanceladas: resData.noAtendidas
+      };
+    });
+
+    res.json(report);
+  } catch (error) {
+    console.error('Error al generar reporte de uso:', error);
+    res.status(500).json({ message: 'Error interno al generar el reporte de uso' });
+  }
+};
+
 module.exports = {
   getSpaces,
   updateSpaceStatus,
@@ -285,5 +399,6 @@ module.exports = {
   getSpacesLogs,
   getBarrierStatus,
   openBarrier,
-  getPublicSpacesStatus
+  getPublicSpacesStatus,
+  getHistoricalUsageReport
 };

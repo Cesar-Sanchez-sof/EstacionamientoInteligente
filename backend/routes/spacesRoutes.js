@@ -7,13 +7,15 @@ const {
   getSpacesLogs, 
   getBarrierStatus, 
   openBarrier,
-  getPublicSpacesStatus
+  getPublicSpacesStatus,
+  getHistoricalUsageReport
 } = require('../controllers/spacesController');
 const { protect, admin } = require('../middlewares/authMiddleware');
 
 router.get('/public/count', getPublicSpacesCount);
 router.get('/public/status', getPublicSpacesStatus);
 router.put('/public/:id', updateSpaceStatus);
+router.get('/reports/usage', protect, admin, getHistoricalUsageReport);
 router.get('/logs', protect, admin, getSpacesLogs);
 router.get('/barrier/status', getBarrierStatus);
 router.post('/barrier/open', protect, admin, openBarrier);
