@@ -310,6 +310,16 @@ void loop() {
         enviarDisponible[i] = estadoFisico[i];
         necesitaEnviar[i] = true;  // Indicar a red enviar actualización
 
+        // Calcular cupos libres localmente para actualizar el LCD de inmediato
+        int libresLocales = 0;
+        for (int j = 0; j < NUM_CAJONES; j++) {
+          if (estadoFisico[j] && !reservadoServidor[j]) {
+            libresLocales++;
+          }
+        }
+        espaciosLibres = libresLocales;
+        restaurarPantallaLCD();
+
         Serial.print("Cajon ");
         Serial.print(i + 1);
         Serial.print(" cambio a: ");
@@ -511,6 +521,15 @@ void consultarReservasServidor() {
             reservadoServidor[numero - 1] = reservado;
           }
         }
+        // Recalcular cupos libres localmente e invocar redibujo de LCD
+        int libresLocales = 0;
+        for (int j = 0; j < NUM_CAJONES; j++) {
+          if (estadoFisico[j] && !reservadoServidor[j]) {
+            libresLocales++;
+          }
+        }
+        espaciosLibres = libresLocales;
+        restaurarPantallaLCD();
       }
     }
     http.end();
