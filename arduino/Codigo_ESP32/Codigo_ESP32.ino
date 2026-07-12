@@ -525,7 +525,7 @@ void consultarReservasServidor() {
             reservadoServidor[numero - 1] = reservado;
           }
         }
-        // Recalcular cupos libres localmente e invocar redibujo de LCD
+        // Recalcular cupos libres localmente (el loop en Core 1 se encargará del redibujo de forma segura)
         int libresLocales = 0;
         for (int j = 0; j < NUM_CAJONES; j++) {
           if (estadoFisico[j] && !reservadoServidor[j]) {
@@ -533,7 +533,6 @@ void consultarReservasServidor() {
           }
         }
         espaciosLibres = libresLocales;
-        restaurarPantallaLCD();
       }
     }
     http.end();
