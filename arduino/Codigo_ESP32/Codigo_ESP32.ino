@@ -243,6 +243,8 @@ void loop() {
     entradaAbierta = false;
     bloqueoEntrada = true;
     restaurarPantallaLCD();
+    rfid.PCD_Init(); // Re-inicializar lector RFID por si hubo caídas de tensión por el servo
+    Serial.println("RFID re-inicializado tras cierre de Entrada.");
   }
   if (!objetoEnEntrada) {
     bloqueoEntrada = false;
@@ -253,6 +255,8 @@ void loop() {
     salidaAbierta = false;
     bloqueoSalida = true;
     restaurarPantallaLCD();
+    rfid.PCD_Init(); // Re-inicializar lector RFID por si hubo caídas de tensión por el servo
+    Serial.println("RFID re-inicializado tras cierre de Salida.");
   }
   if (!objetoEnSalida) {
     bloqueoSalida = false;
