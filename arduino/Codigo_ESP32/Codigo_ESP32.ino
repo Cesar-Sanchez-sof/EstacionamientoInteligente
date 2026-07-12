@@ -333,16 +333,20 @@ void loop() {
     int ledIdx1 = 2 * i;
     int ledIdx2 = 2 * i + 1;
 
-    if (!estadoFisico[i] || !disponibleServidor[i]) {
-      // Ocupado físicamente o por base de datos -> ROJO
+    if (!estadoFisico[i]) {
+      // 1. Si está físicamente ocupado (sensor local) -> ROJO
       pixels.setPixelColor(ledIdx1, pixels.Color(255, 0, 0));
       pixels.setPixelColor(ledIdx2, pixels.Color(255, 0, 0));
     } else if (reservadoServidor[i]) {
-      // Libre físicamente pero reservado -> AZUL
+      // 2. Si está físicamente libre pero reservado en el servidor -> AZUL
       pixels.setPixelColor(ledIdx1, pixels.Color(0, 0, 255));
       pixels.setPixelColor(ledIdx2, pixels.Color(0, 0, 255));
+    } else if (!disponibleServidor[i]) {
+      // 3. Si está físicamente libre pero el sistema web lo marcó como ocupado -> ROJO
+      pixels.setPixelColor(ledIdx1, pixels.Color(255, 0, 0));
+      pixels.setPixelColor(ledIdx2, pixels.Color(255, 0, 0));
     } else {
-      // Libre físicamente sin reservas -> VERDE
+      // 4. Libre físicamente sin reservas -> VERDE
       pixels.setPixelColor(ledIdx1, pixels.Color(0, 255, 0));
       pixels.setPixelColor(ledIdx2, pixels.Color(0, 255, 0));
     }
