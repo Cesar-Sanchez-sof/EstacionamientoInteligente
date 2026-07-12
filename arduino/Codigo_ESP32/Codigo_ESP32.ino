@@ -64,6 +64,7 @@ unsigned long tiempoCambio[NUM_CAJONES] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 const unsigned long tiempoDebounce = 2000;  // 2 segundos de rebote
 
 // Señales y estado desde/hacia la nube
+volatile bool disponibleServidor[NUM_CAJONES] = { true, true, true, true, true, true, true, true, true, true };
 volatile bool reservadoServidor[NUM_CAJONES] = { false, false, false, false, false, false, false, false, false, false };
 volatile bool necesitaEnviar[NUM_CAJONES] = { false, false, false, false, false, false, false, false, false, false };
 volatile bool enviarDisponible[NUM_CAJONES] = { true, true, true, true, true, true, true, true, true, true };
@@ -304,8 +305,8 @@ void loop() {
     int ledIdx1 = 2 * i;
     int ledIdx2 = 2 * i + 1;
 
-    if (!estadoFisico[i]) {
-      // Ocupado físicamente -> ROJO
+    if (!estadoFisico[i] || !disponibleServidor[i]) {
+      // Ocupado físicamente o por base de datos -> ROJO
       pixels.setPixelColor(ledIdx1, pixels.Color(255, 0, 0));
       pixels.setPixelColor(ledIdx2, pixels.Color(255, 0, 0));
     } else if (reservadoServidor[i]) {
@@ -484,9 +485,11 @@ void consultarReservasServidor() {
         JsonArray arr = doc.as<JsonArray>();
         for (JsonVariant val : arr) {
           int numero = val["numero"];
+          bool disponible = val["disponible"];
           bool reservado = val["reservado"];
 
           if (numero >= 1 && numero <= NUM_CAJONES) {
+            disponibleServidor[numero - 1] = disponible;
             reservadoServidor[numero - 1] = reservado;
           }
         }
