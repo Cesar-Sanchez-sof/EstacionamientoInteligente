@@ -79,7 +79,7 @@ const unsigned long apiDelay = 5000;
 unsigned long lastBarrierApiTime = 0;
 const unsigned long barrierApiDelay = 1500;
 unsigned long lastStatusApiTime = 0;
-const unsigned long statusApiDelay = 3000;  // Consultar reservas cada 3s
+const unsigned long statusApiDelay = 1500;  // Consultar reservas y disponibilidad cada 1.5s
 
 unsigned long tiempoAperturaEntrada = 0;
 unsigned long tiempoAperturaSalida = 0;
