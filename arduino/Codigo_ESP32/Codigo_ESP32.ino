@@ -173,9 +173,22 @@ void loop() {
   // 2. Lectura del lector RFID
   if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
     rfidDetectado = true;
+    
+    // Imprimir UID de la tarjeta en el Monitor Serie
+    Serial.print("RFID: Tarjeta leida - UID: ");
+    for (byte i = 0; i < rfid.uid.size; i++) {
+      if (rfid.uid.uidByte[i] < 0x10) {
+        Serial.print("0");
+      }
+      Serial.print(rfid.uid.uidByte[i], HEX);
+      if (i < rfid.uid.size - 1) {
+        Serial.print(" ");
+      }
+    }
+    Serial.println();
+
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
-    Serial.println("RFID: Tarjeta leída");
   }
 
   // 3. Apertura de Entrada (Sensor FC-51 de entrada o Tarjeta RFID)
