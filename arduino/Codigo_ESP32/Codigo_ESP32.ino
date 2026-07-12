@@ -122,6 +122,24 @@ void setup() {
 
   delay(500);  // Estabilización eléctrica
 
+  // Leer estado inicial físico de los sensores de los cajones y programar sincronización inicial
+  Serial.println("Estableciendo estado inicial de cajones...");
+  for (int i = 0; i < NUM_CAJONES; i++) {
+    bool lecturaInicial = (digitalRead(pinFC51Cajones[i]) == HIGH); // HIGH = libre
+    estadoFisico[i] = lecturaInicial;
+    ultimoEstadoFisico[i] = lecturaInicial;
+    disponibleServidor[i] = lecturaInicial;
+    
+    // Forzar actualización inicial en la base de datos
+    enviarDisponible[i] = lecturaInicial;
+    necesitaEnviar[i] = true;
+    
+    Serial.print("Cajon ");
+    Serial.print(i + 1);
+    Serial.print(" inicializado como: ");
+    Serial.println(lecturaInicial ? "LIBRE" : "OCUPADO");
+  }
+
   // 4. Inicializar Servomotores (cerrados por defecto)
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
