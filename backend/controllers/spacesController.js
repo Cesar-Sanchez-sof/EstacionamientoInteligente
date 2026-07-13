@@ -317,12 +317,11 @@ const getHistoricalUsageReport = async (req, res) => {
 
     let totalPeriodMs;
     if (tipo === 'dia') {
-      totalPeriodMs = limitDate - startDate;
-      if (totalPeriodMs <= 0) totalPeriodMs = 1;
+      totalPeriodMs = 24 * 60 * 60 * 1000;
     } else {
-      totalPeriodMs = limitDate.getTime() - startDate.getTime();
-      if (totalPeriodMs <= 0) totalPeriodMs = 1;
+      totalPeriodMs = endDate.getTime() - startDate.getTime();
     }
+    if (totalPeriodMs <= 0) totalPeriodMs = 1;
 
     const spacesRes = await db.query('SELECT id_lugar, numero FROM Lugar ORDER BY numero ASC');
     const spaces = spacesRes.rows;
