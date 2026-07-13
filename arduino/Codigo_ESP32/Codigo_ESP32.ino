@@ -119,6 +119,7 @@ void setup() {
   // 3. Inicializar Sensores y RFID
   SPI.begin();
   rfid.PCD_Init();
+  rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
   pinMode(PIN_FC51_ENT, INPUT);
   pinMode(PIN_FC51_SAL, INPUT);
   for (int i = 0; i < NUM_CAJONES; i++) {
@@ -192,6 +193,9 @@ void setup() {
 unsigned long lastRfidCheckTime = 0;
 const unsigned long rfidCheckDelay = 150; // Consultar cada 150ms
 
+unsigned long lastRfidInitTime = 0;
+const unsigned long rfidInitInterval = 4000; // Re-inicializar el RFID cada 4 segundos para evitar congelamientos
+
 void loop() {
   // 1. Lectura instantánea de sensores de acceso (HIGH = libre, LOW = objeto detectado)
   bool objetoEnEntrada = (digitalRead(PIN_FC51_ENT) == LOW);
@@ -202,8 +206,17 @@ void loop() {
   if (millis() - lastRfidCheckTime >= rfidCheckDelay) {
     lastRfidCheckTime = millis();
     
+    // Heartbeat: Re-inicializa periódicamente el chip RC522 si ha estado inactivo para evitar bloqueos del bus SPI
+    if (millis() - lastRfidInitTime >= rfidInitInterval) {
+      lastRfidInitTime = millis();
+      rfid.PCD_Init();
+      rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
+      Serial.println("RFID: Heartbeat re-init (evita congelamientos e incrementa ganancia).");
+    }
+    
     if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
       rfidDetectado = true;
+      lastRfidInitTime = millis(); // Reinicia el timer para evitar interferir con la lectura actual
       
       // Imprimir UID de la tarjeta en el Monitor Serie
       Serial.print("RFID: Tarjeta leida - UID: ");
