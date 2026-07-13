@@ -420,13 +420,35 @@ void enviarEstadoCajon(int id_lugar, bool disponible) {
     HTTPClient http;
 
     String url = "https://estacionamiento-inteligente.vercel.app/api/spaces/public/" + String(id_lugar);
+    
+    Serial.print("RFID/Sensor: Enviando Cajon ");
+    Serial.print(id_lugar);
+    Serial.print(" (disponible: ");
+    Serial.print(disponible ? "true" : "false");
+    Serial.print(") a URL: ");
+    Serial.println(url);
+
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("User-Agent", "ESP32");
 
     String body = "{\"disponible\":" + String(disponible ? "true" : "false") + "}";
     int httpResponseCode = http.PUT(body);
+    
+    Serial.print("-> Respuesta HTTP: ");
+    Serial.println(httpResponseCode);
+    
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      Serial.println("-> Servidor responde: " + response);
+    } else {
+      Serial.print("-> Error de red: ");
+      Serial.println(http.errorToString(httpResponseCode).c_str());
+    }
+    
     http.end();
+  } else {
+    Serial.println("No se puede enviar estado: WiFi desconectado.");
   }
 }
 
