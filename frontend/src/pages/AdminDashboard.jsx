@@ -23,11 +23,25 @@ const AdminDashboard = () => {
   // Estados para reportes históricos de uso
   const [reportType, setReportType] = useState('dia'); // 'dia', 'mes', 'anio'
   const [reportDate, setReportDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return new Intl.DateTimeFormat('fr-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
   });
-  const [reportMonth, setReportMonth] = useState((new Date().getMonth() + 1).toString());
-  const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
+  const [reportMonth, setReportMonth] = useState(() => {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      month: 'numeric'
+    }).format(new Date());
+  });
+  const [reportYear, setReportYear] = useState(() => {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric'
+    }).format(new Date());
+  });
   const [reportData, setReportData] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
