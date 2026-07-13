@@ -331,22 +331,38 @@ const AdminDashboard = () => {
     fetchData();
   }, [user, navigate]);
 
-  // Polling for real-time sensor updates and barrier status
+  // Polling for real-time sensor updates, barrier status and historical reports
   useEffect(() => {
     if (!user || user.rol !== 'ADMIN') return;
 
     const interval = setInterval(async () => {
       try {
-        const [spacesRes, logsRes, barrierRes] = await Promise.all([
+        const promises = [
           api.get('/spaces'),
           api.get('/spaces/logs'),
           api.get('/spaces/barrier/status')
-        ]);
-        setSpaces(spacesRes.data);
-        setSensorLogs(logsRes.data);
+        ];
+
+        // If currently viewing reports, fetch the report data in real-time as well
+        if (activeTab === 'reports') {
+          let params = { tipo: reportType };
+          if (reportType === 'dia') params.fecha = reportDate;
+          else if (reportType === 'mes') {
+            params.mes = reportMonth;
+            params.anio = reportYear;
+          } else if (reportType === 'anio') {
+            params.anio = reportYear;
+          }
+          promises.push(api.get('/spaces/reports/usage', { params }));
+        }
+
+        const results = await Promise.all(promises);
+        
+        setSpaces(results[0].data);
+        setSensorLogs(results[1].data);
         
         setBarriers(prevBarriers => {
-          const nextBarriers = barrierRes.data;
+          const nextBarriers = results[2].data;
           
           nextBarriers.forEach(next => {
             const prev = prevBarriers.find(p => p.id_barrera === next.id_barrera);
@@ -362,13 +378,17 @@ const AdminDashboard = () => {
           
           return nextBarriers;
         });
+
+        if (activeTab === 'reports' && results[3]) {
+          setReportData(results[3].data);
+        }
       } catch (err) {
         console.error('Error polling admin data', err);
       }
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, activeTab, reportType, reportDate, reportMonth, reportYear]);
 
   const toggleSpaceStatus = async (id, currentStatus) => {
     try {
