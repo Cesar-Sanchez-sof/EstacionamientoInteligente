@@ -30,6 +30,16 @@ const createReservation = async (req, res) => {
       return res.status(400).json({ message: 'No se puede reservar para la fecha u hora actual o en el pasado' });
     }
 
+    // Validar si el estacionamiento tiene 5 o más lugares ocupados
+    const occupiedSpotsRes = await db.query('SELECT COUNT(*) FROM Lugar WHERE disponible = false');
+    const occupiedSpotsCount = parseInt(occupiedSpotsRes.rows[0].count, 10);
+
+    if (occupiedSpotsCount >= 5) {
+      return res.status(400).json({ 
+        message: `No se admiten más reservas: el estacionamiento tiene ${occupiedSpotsCount} lugares ocupados actualmente.` 
+      });
+    }
+
     // Global capacity check for target date & time (Limit to > 50% free spots)
     const totalSpotsRes = await db.query('SELECT COUNT(*) FROM Lugar');
     const totalSpots = parseInt(totalSpotsRes.rows[0].count, 10);
