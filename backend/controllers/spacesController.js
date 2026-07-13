@@ -316,28 +316,64 @@ const getHistoricalUsageReport = async (req, res) => {
     const spacesRes = await db.query('SELECT id_lugar, numero FROM Lugar ORDER BY numero ASC');
     const spaces = spacesRes.rows;
 
-    const occupancyRes = await db.query(`
-      WITH paired_events AS (
-          SELECT 
-              id_lugar,
-              tipo,
-              fecha_hora,
-              LEAD(tipo) OVER (PARTITION BY id_lugar ORDER BY fecha_hora) AS next_tipo,
-              LEAD(fecha_hora) OVER (PARTITION BY id_lugar ORDER BY fecha_hora) AS next_fecha_hora
-          FROM registro_vehicular
-          WHERE fecha_hora >= $1 AND fecha_hora <= $2
-      )
-      SELECT 
-          id_lugar,
-          COALESCE(SUM(EXTRACT(EPOCH FROM (next_fecha_hora - fecha_hora)) * 1000), 0) AS tiempo_ocupado_ms
-      FROM paired_events
-      WHERE tipo = 'INGRESO' AND next_tipo = 'SALIDA'
-      GROUP BY id_lugar
-    `, [startDate.toISOString(), endDate.toISOString()]);
     const occupancyMap = {};
-    occupancyRes.rows.forEach(r => {
-      occupancyMap[r.id_lugar] = Number(r.tiempo_ocupado_ms);
-    });
+
+    // Calula el tiempo total ocupado por cada cajón de manera robusta usando una máquina de estados
+    for (const space of spaces) {
+      const id = space.id_lugar;
+      
+      // 1. Determina el estado inicial al comienzo del periodo buscando el último evento previo
+      const lastEventRes = await db.query(
+        `SELECT tipo FROM registro_vehicular 
+         WHERE id_lugar = $1 AND fecha_hora < $2 
+         ORDER BY fecha_hora DESC LIMIT 1`,
+        [id, startDate.toISOString()]
+      );
+      
+      let state = 'FREE';
+      let lastChangeTime = null;
+      
+      if (lastEventRes.rows.length > 0 && lastEventRes.rows[0].tipo === 'INGRESO') {
+        state = 'OCCUPIED';
+        lastChangeTime = startDate;
+      }
+      
+      // 2. Obtiene todos los eventos de ingreso/salida ocurridos durante el rango
+      const eventsRes = await db.query(
+        `SELECT tipo, fecha_hora FROM registro_vehicular 
+         WHERE id_lugar = $1 AND fecha_hora >= $2 AND fecha_hora <= $3 
+         ORDER BY fecha_hora ASC`,
+        [id, startDate.toISOString(), endDate.toISOString()]
+      );
+      
+      let totalOccupiedTime = 0;
+      
+      for (const event of eventsRes.rows) {
+        const eventTime = new Date(event.fecha_hora);
+        
+        if (event.tipo === 'INGRESO') {
+          if (state === 'FREE') {
+            state = 'OCCUPIED';
+            lastChangeTime = eventTime;
+          }
+        } else if (event.tipo === 'SALIDA') {
+          if (state === 'OCCUPIED') {
+            const duration = eventTime - lastChangeTime;
+            totalOccupiedTime += duration;
+            state = 'FREE';
+            lastChangeTime = null;
+          }
+        }
+      }
+      
+      // 3. Si al finalizar el periodo sigue ocupado, suma el remanente hasta endDate
+      if (state === 'OCCUPIED' && lastChangeTime) {
+        const duration = endDate - lastChangeTime;
+        totalOccupiedTime += duration;
+      }
+      
+      occupancyMap[id] = totalOccupiedTime;
+    }
 
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
