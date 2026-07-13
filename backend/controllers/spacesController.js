@@ -283,7 +283,6 @@ const getHistoricalUsageReport = async (req, res) => {
     const { tipo, fecha, mes, anio } = req.query;
 
     let startDate, endDate;
-    let totalPeriodMs;
 
     if (tipo === 'dia') {
       if (!fecha) {
@@ -291,7 +290,6 @@ const getHistoricalUsageReport = async (req, res) => {
       }
       startDate = new Date(`${fecha}T00:00:00-05:00`);
       endDate = new Date(`${fecha}T23:59:59-05:00`);
-      totalPeriodMs = 24 * 60 * 60 * 1000;
     } else if (tipo === 'mes') {
       if (!anio || !mes) {
         return res.status(400).json({ message: 'Año y mes son requeridos para reporte mensual' });
@@ -300,7 +298,6 @@ const getHistoricalUsageReport = async (req, res) => {
       const monthNum = Number(mes) - 1;
       startDate = new Date(yearNum, monthNum, 1, 0, 0, 0);
       endDate = new Date(yearNum, monthNum + 1, 0, 23, 59, 59);
-      totalPeriodMs = endDate.getTime() - startDate.getTime();
     } else if (tipo === 'anio') {
       if (!anio) {
         return res.status(400).json({ message: 'Año es requerido para reporte anual' });
@@ -308,9 +305,23 @@ const getHistoricalUsageReport = async (req, res) => {
       const yearNum = Number(anio);
       startDate = new Date(yearNum, 0, 1, 0, 0, 0);
       endDate = new Date(yearNum, 11, 31, 23, 59, 59);
-      totalPeriodMs = endDate.getTime() - startDate.getTime();
     } else {
       return res.status(400).json({ message: 'Tipo de reporte inválido. Debe ser dia, mes o anio' });
+    }
+
+    const now = new Date();
+    let limitDate = endDate;
+    if (endDate > now) {
+      limitDate = now;
+    }
+
+    let totalPeriodMs;
+    if (tipo === 'dia') {
+      totalPeriodMs = limitDate - startDate;
+      if (totalPeriodMs <= 0) totalPeriodMs = 1;
+    } else {
+      totalPeriodMs = limitDate.getTime() - startDate.getTime();
+      if (totalPeriodMs <= 0) totalPeriodMs = 1;
     }
 
     const spacesRes = await db.query('SELECT id_lugar, numero FROM Lugar ORDER BY numero ASC');
@@ -330,7 +341,7 @@ const getHistoricalUsageReport = async (req, res) => {
         `SELECT tipo, fecha_hora FROM registro_vehicular 
          WHERE id_lugar = $1 AND fecha_hora >= $2 AND fecha_hora <= $3 
          ORDER BY fecha_hora ASC`,
-        [id, startDate.toISOString(), endDate.toISOString()]
+        [id, startDate.toISOString(), limitDate.toISOString()]
       );
       
       let totalOccupiedTime = 0;
@@ -353,9 +364,9 @@ const getHistoricalUsageReport = async (req, res) => {
         }
       }
       
-      // 3. Si al finalizar el periodo sigue ocupado, suma el remanente hasta endDate
+      // 3. Si al finalizar el periodo sigue ocupado, suma el remanente hasta limitDate
       if (state === 'OCCUPIED' && lastChangeTime) {
-        const duration = endDate - lastChangeTime;
+        const duration = limitDate - lastChangeTime;
         totalOccupiedTime += duration;
       }
       
