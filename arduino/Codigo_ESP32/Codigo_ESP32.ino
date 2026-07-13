@@ -8,6 +8,8 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
 const char* ssid = "XIDI";
@@ -94,6 +96,9 @@ void restaurarPantallaLCD();
 void tareaNetwork(void* pvParameters);
 
 void setup() {
+  // Desactivar Brownout Detector
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
+  
   Serial.begin(115200);
 
   // 1. Inicializar I2C y LCD
@@ -183,31 +188,39 @@ void setup() {
 // =========================================================================
 // NÚCLEO 1: LOOP FÍSICO DE ALTA VELOCIDAD (RFID, SERVOS, LEDS Y SENSORES)
 // =========================================================================
+// --- TEMPORIZACIÓN DE RFID ---
+unsigned long lastRfidCheckTime = 0;
+const unsigned long rfidCheckDelay = 150; // Consultar cada 150ms
+
 void loop() {
   // 1. Lectura instantánea de sensores de acceso (HIGH = libre, LOW = objeto detectado)
   bool objetoEnEntrada = (digitalRead(PIN_FC51_ENT) == LOW);
   bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
   bool rfidDetectado = false;
 
-  // 2. Lectura del lector RFID
-  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    rfidDetectado = true;
+  // 2. Lectura del lector RFID con temporizador no bloqueante
+  if (millis() - lastRfidCheckTime >= rfidCheckDelay) {
+    lastRfidCheckTime = millis();
     
-    // Imprimir UID de la tarjeta en el Monitor Serie
-    Serial.print("RFID: Tarjeta leida - UID: ");
-    for (byte i = 0; i < rfid.uid.size; i++) {
-      if (rfid.uid.uidByte[i] < 0x10) {
-        Serial.print("0");
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+      rfidDetectado = true;
+      
+      // Imprimir UID de la tarjeta en el Monitor Serie
+      Serial.print("RFID: Tarjeta leida - UID: ");
+      for (byte i = 0; i < rfid.uid.size; i++) {
+        if (rfid.uid.uidByte[i] < 0x10) {
+          Serial.print("0");
+        }
+        Serial.print(rfid.uid.uidByte[i], HEX);
+        if (i < rfid.uid.size - 1) {
+          Serial.print(" ");
+        }
       }
-      Serial.print(rfid.uid.uidByte[i], HEX);
-      if (i < rfid.uid.size - 1) {
-        Serial.print(" ");
-      }
-    }
-    Serial.println();
+      Serial.println();
 
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
+    }
   }
 
   // 3. Apertura de Entrada (Sensor FC-51 de entrada o Tarjeta RFID)
