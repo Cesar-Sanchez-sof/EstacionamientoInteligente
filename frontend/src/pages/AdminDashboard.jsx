@@ -1645,7 +1645,7 @@ const AdminDashboard = () => {
           ) : (
             <>
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
                   <span className="text-xs font-semibold text-gray-400 uppercase">Utilización Promedio</span>
                   <div className="mt-2 flex items-baseline">
@@ -1654,6 +1654,18 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-1">Uso de cajones promedio en el periodo</p>
+                </div>
+
+                {/* Usos Físicos Card */}
+                <div className="glass-panel p-5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                  <span className="text-xs font-semibold text-gray-400 uppercase">Autos Estacionados</span>
+                  <div className="mt-2 flex items-baseline">
+                    <span className="text-3xl font-extrabold text-[var(--neon-blue)]">
+                      {reportData.reduce((acc, r) => acc + (r.usosFisicos || 0), 0)}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2">usos</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">Detecciones físicas por sensor FC-51</p>
                 </div>
 
                 {/* Most Used Spot (Time) */}
@@ -1764,6 +1776,7 @@ const AdminDashboard = () => {
                         <th className="py-3.5 px-5">Tiempo Ocupado</th>
                         <th className="py-3.5 px-5">Tiempo Libre</th>
                         <th className="py-3.5 px-5">Utilización (%)</th>
+                        <th className="py-3.5 px-5 text-center">Usos Físicos</th>
                         <th className="py-3.5 px-5 text-center">Total Reservas</th>
                         <th className="py-3.5 px-5 text-center">Atendidas</th>
                         <th className="py-3.5 px-5 text-center">Canceladas/Perdidas</th>
@@ -1790,6 +1803,7 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
                             </td>
+                            <td className="py-3.5 px-5 text-center font-mono font-semibold text-[var(--neon-blue)]">{row.usosFisicos || 0}</td>
                             <td className="py-3.5 px-5 text-center font-mono font-semibold">{row.totalReservas}</td>
                             <td className="py-3.5 px-5 text-center font-mono text-emerald-400">{row.reservasAtendidas}</td>
                             <td className="py-3.5 px-5 text-center font-mono text-rose-400">{row.reservasCanceladas}</td>

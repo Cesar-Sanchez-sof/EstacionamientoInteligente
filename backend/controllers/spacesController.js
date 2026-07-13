@@ -328,6 +328,7 @@ const getHistoricalUsageReport = async (req, res) => {
     const spaces = spacesRes.rows;
 
     const occupancyMap = {};
+    const detectionsMap = {};
 
     // Calcula el tiempo total ocupado por cada cajón de manera robusta usando una máquina de estados
     for (const space of spaces) {
@@ -335,6 +336,7 @@ const getHistoricalUsageReport = async (req, res) => {
       
       let state = 'FREE';
       let lastChangeTime = null;
+      let totalDetections = 0;
       
       // 2. Obtiene todos los eventos de ingreso/salida ocurridos durante el rango
       const eventsRes = await db.query(
@@ -350,6 +352,7 @@ const getHistoricalUsageReport = async (req, res) => {
         const eventTime = new Date(event.fecha_hora);
         
         if (event.tipo === 'INGRESO') {
+          totalDetections++;
           if (state === 'FREE') {
             state = 'OCCUPIED';
             lastChangeTime = eventTime;
@@ -371,6 +374,7 @@ const getHistoricalUsageReport = async (req, res) => {
       }
       
       occupancyMap[id] = totalOccupiedTime;
+      detectionsMap[id] = totalDetections;
     }
 
     const startStr = startDate.toISOString().split('T')[0];
@@ -415,7 +419,8 @@ const getHistoricalUsageReport = async (req, res) => {
         porcentajeUtilizacion,
         totalReservas: resData.total,
         reservasAtendidas: resData.atendidas,
-        reservasCanceladas: resData.noAtendidas
+        reservasCanceladas: resData.noAtendidas,
+        usosFisicos: detectionsMap[id] || 0
       };
     });
 
