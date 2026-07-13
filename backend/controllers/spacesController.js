@@ -318,25 +318,12 @@ const getHistoricalUsageReport = async (req, res) => {
 
     const occupancyMap = {};
 
-    // Calula el tiempo total ocupado por cada cajón de manera robusta usando una máquina de estados
+    // Calcula el tiempo total ocupado por cada cajón de manera robusta usando una máquina de estados
     for (const space of spaces) {
       const id = space.id_lugar;
       
-      // 1. Determina el estado inicial al comienzo del periodo buscando el último evento previo
-      const lastEventRes = await db.query(
-        `SELECT tipo FROM registro_vehicular 
-         WHERE id_lugar = $1 AND fecha_hora < $2 
-         ORDER BY fecha_hora DESC LIMIT 1`,
-        [id, startDate.toISOString()]
-      );
-      
       let state = 'FREE';
       let lastChangeTime = null;
-      
-      if (lastEventRes.rows.length > 0 && lastEventRes.rows[0].tipo === 'INGRESO') {
-        state = 'OCCUPIED';
-        lastChangeTime = startDate;
-      }
       
       // 2. Obtiene todos los eventos de ingreso/salida ocurridos durante el rango
       const eventsRes = await db.query(
