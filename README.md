@@ -1,24 +1,17 @@
 # 🚗 Estacionamiento Inteligente (Smart Parking)
 
-[![React](https://img.shields.io/badge/React-19-blue.svg?logo=react)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-8-646CFF.svg?logo=vite)](https://vite.dev/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4.svg?logo=tailwindcss)](https://tailwindcss.com/)
-[![Three.js](https://img.shields.io/badge/Three.js-r184-black.svg?logo=three.js)](https://threejs.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-Express%205-339933.svg?logo=node.js)](https://nodejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-v16-4169E1.svg?logo=postgresql)](https://www.postgresql.org/)
+Estacionamiento Inteligente es una plataforma web PWA full-stack de última generación diseñada para la gestión, reserva y visualización interactiva de plazas de estacionamiento en tiempo real, integrada directamente con un sistema físico controlado por un microcontrolador ESP32 de 38 pines.
 
-**Estacionamiento Inteligente** es una plataforma web full-stack de última generación diseñada para la gestión, reserva y visualización interactiva de plazas de estacionamiento en tiempo real. 
-
-Orientada a brindar una experiencia de usuario (UX) sumamente fluida y visualmente impactante, la aplicación destaca por integrar un **croquis tridimensional interactivo (3D)** de la playa de estacionamiento y un panel administrativo con **gráficas de ocupación dinámicas**.
+Orientada a brindar una experiencia de usuario (UX) sumamente fluida y visualmente impactante, la aplicación destaca por integrar un **croquis tridimensional interactivo (3D)** de la playa de estacionamiento y un panel administrativo con **estadísticas y reportes de uso dinámicos en tiempo real**.
 
 ---
 
 ## 🎨 Filosofía de Diseño y UX/UI
 
 La interfaz de usuario ha sido concebida bajo principios de **Diseño Futurista e Inmersivo**:
-- **Estética Dark Mode & Neon**: Paleta basada en tonos pizarra oscuros (`slate-900` / `gray-900`) con acentos en colores neón de alta luminancia (Cyan para realces de interfaz y reservas propias, Verde Neón para disponibilidad y Rojo Vibrante para ocupado/alerta).
-- **Glassmorphism**: Paneles de información semitransparentes con efectos de desenfoque de fondo (`backdrop-blur`) y bordes sutiles que generan sensación de profundidad.
-- **Micro-interacciones tridimensionales**: El mapa de estacionamiento 3D permite rotación orbital, paneo y zoom fluidos mediante gestos táctiles o de mouse (`OrbitControls`), reaccionando instantáneamente al hacer clic sobre una plaza libre para iniciar el proceso de reserva.
+* **Estética Dark Mode & Neon**: Paleta basada en tonos pizarra oscuros (`slate-900` / `gray-900`) con acentos en colores neón de alta luminancia (Cyan para realces de interfaz y reservas propias, Verde Neón para disponibilidad y Rojo Vibrante para ocupado/alerta).
+* **Glassmorphism**: Paneles de información semitransparentes con efectos de desenfoque de fondo (`backdrop-blur`) y bordes sutiles que generan sensación de profundidad.
+* **Micro-interacciones tridimensionales**: El mapa de estacionamiento 3D permite rotación orbital, paneo y zoom fluidos mediante gestos táctiles o de mouse (`OrbitControls`), reaccionando instantáneamente al hacer clic sobre una plaza libre para iniciar el proceso de reserva.
 
 ---
 
@@ -26,53 +19,124 @@ La interfaz de usuario ha sido concebida bajo principios de **Diseño Futurista 
 
 ### Para los Usuarios (Clientes)
 1. **Visualización 3D Interactiva**: Renderizado tridimensional en tiempo real del estacionamiento, diferenciando estados por colores:
-   - 🟢 **Verde**: Disponible físicamente y sin reservas activas.
-   - 🔴 **Rojo**: Ocupado físicamente (sensor activo) o reservado por otro usuario.
-   - 🔵 **Azul**: Reservado por el usuario logueado en la sesión.
+   * 🟢 **Verde**: Disponible físicamente y sin reservas activas.
+   * 🔴 **Rojo**: Ocupado físicamente (sensor activo) o reservado por otro usuario.
+   * 🔵 **Azul**: Reservado por el usuario logueado en la sesión.
 2. **Reservas Flexibles**: Permite seleccionar una plaza desde el mapa 3D y agendarla especificando fecha y hora.
 3. **Gestión de Vehículos**: Vinculación de la placa vehicular obligatoria al registrarse.
 4. **Sincronización en Tiempo Real**: Consulta periódica automática (polling cada 10 segundos) para mantener la disponibilidad actualizada sin refrescar la página.
 
 ### Para Administradores (IoT & Gestión)
 1. **Control de Espacios Físicos (Simulación de Sensores)**: Un panel interactivo que permite alternar el estado físico de los cajones (`OCUPADO` / `LIBRE`), simulando la telemetría del sensor físico.
-2. **Control Remoto de Barreras (Doble Acceso)**: Interfaz para abrir de forma remota e independiente la **Barrera de Entrada** (ID 1) y la **Barrera de Salida** (ID 2). Cuenta con animación gráfica en tiempo real y cierre automático temporizado tras 5 segundos.
-3. **Historial de Actividad de Sensores**: Registro dinámico que muestra en tiempo real cuándo ingresa o sale un vehículo de cada cajón, con marcas de tiempo formateadas.
-4. **Dashboard Estadístico**: Gráfico de barras interactivo desarrollado con Recharts que muestra el estado de ocupación general, plazas libres y cantidad de reservas activas.
-5. **Gestión de Reservas Global**: Tabla de control para visualizar y cancelar reservas de cualquier usuario.
+2. **Control Remoto de Barreras (Doble Acceso)**: Interfaz para abrir de forma remota e independiente la **Barrera de Entrada** (ID 1) y la **Barrera de Salida** (ID 2) con auto-cierre en 5 segundos.
+3. **Historial de Actividad de Sensores (IoT)**: Registro dinámico que muestra en tiempo real cuándo ingresa o sale un vehículo de cada cajón, con marcas de tiempo formateadas.
+4. **Reporte de Uso en Tiempo Real (Base 24h)**: Muestra el total de horas ocupadas, horas libres (sumando siempre 24.0h) y el porcentaje de utilización diaria de forma dinámica (polling cada 2.5s).
+5. **Autos Estacionados**: Cuenta e informa la cantidad de usos físicos y vehículos detectados por los sensores FC-51 a lo largo de la fecha consultada.
 
 ---
 
 ## 🛠️ Stack Tecnológico
 
-El proyecto está dividido en dos partes principales:
+El proyecto está dividido en tres áreas de desarrollo:
 
-### Frontend
-- **Framework & Builder**: React 19 + Vite.
-- **Estilos**: Tailwind CSS v4 (con optimización CSS nativa en Vite).
-- **Modelado 3D**: Three.js, `@react-three/fiber` y `@react-three/drei`.
-- **Gestión de Estado**: Zustand (gestión ligera y reactiva del estado de autenticación y token).
-- **Visualización de Datos**: Recharts (gráficos responsivos).
-- **Soporte Offline/PWA**: Configurado mediante `vite-plugin-pwa`.
-- **Cliente HTTP**: Axios (con interceptores para adjuntar dinámicamente el Token JWT).
+### Frontend (PWA)
+* **Framework & Builder**: React 19 + Vite.
+* **Estilos**: Tailwind CSS v4.
+* **Modelado 3D**: Three.js, `@react-three/fiber` y `@react-three/drei`.
+* **Gestión de Estado**: Zustand (gestión ligera del estado de autenticación y token).
+* **Visualización de Datos**: Recharts (gráficos responsivos).
+* **Soporte Offline/PWA**: Configurado mediante `vite-plugin-pwa`.
 
 ### Backend
-- **Entorno de Ejecución**: Node.js con Express v5.
-- **Base de Datos**: PostgreSQL (Base de datos relacional robusta).
-- **Seguridad**: JWT (Tokens de acceso para autenticación) y Bcrypt (encriptación y hash de contraseñas).
-- **Validación**: Express Validator (validación robusta de formatos de entrada, tipos de documentos, etc.).
-- **Controladores de Base de Datos**: Módulo `pg` (Pool de conexiones).
+* **Entorno de Ejecución**: Node.js con Express v5.
+* **Base de Datos**: PostgreSQL (Base de datos relacional robusta).
+* **Seguridad**: JWT (Tokens de acceso para autenticación) y Bcrypt (encriptación de contraseñas).
+* **Controladores de Base de Datos**: Módulo `pg` (Pool de conexiones).
 
 ### Hardware / IoT
-- **Microcontrolador**: ESP32 NodeMCU (38 pines).
-- **Sensores**: Sensor de proximidad infrarrojo FC-51 (obstáculos) y Lector RFID RC522 (tarjetas de acceso).
-- **Actuadores**: Micro Servomotores SG90 (simulación física de barreras de acceso).
-- **Visualización**: Pantalla LCD 16x2 con adaptador I2C.
+* **Microcontrolador**: ESP32 NodeMCU (38 pines).
+* **Sensores**: Sensor de proximidad infrarrojo FC-51 (obstáculos) y Lector RFID RC522 (tarjetas de acceso).
+* **Actuadores**: Micro Servomotores SG90 (barreras físicas).
+* **Visualización**: Pantalla LCD 16x2 con adaptador I2C (PCF8574).
+
+---
+
+## 📡 Integración de Hardware & Configuración de Pines
+
+El microcontrolador **ESP32** está programado para interactuar directamente con la API web. Utiliza una arquitectura **Multitarea de Doble Núcleo (FreeRTOS)** para garantizar un rendimiento óptimo:
+* **Core 0 (Hilo de Red - Background)**: Realiza consultas HTTPS lentas al servidor (comprobando estado de barreras remotas cada 1.5s y estado de cajones cada 5s) sin bloquear las lecturas físicas.
+* **Core 1 (Hilo Principal - Loop Físico)**: Realiza la lectura del lector RFID RC522, activa los servomotores al instante al detectar tarjetas o paso de autos, y actualiza la pantalla LCD 16x2.
+
+### 📋 Tabla de Conexión de Pines (ESP32 de 38 Pines)
+
+| Componente | Pin ESP32 (GPIO) | Función / Señal | Descripción |
+|---|---|---|---|
+| **Pantalla LCD 16x2 I2C** | GPIO 21 | SDA | Línea de datos I2C |
+| | GPIO 22 | SCL | Línea de reloj I2C |
+| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
+| | GND | Tierra | Conexión a tierra común |
+| **Lector RFID MFRC522** | GPIO 5 | SDA / SS | Select Pin (SPI SS) |
+| | GPIO 4 | RST | Reset Pin |
+| | GPIO 18 | SCK | SPI Clock |
+| | GPIO 19 | MISO | SPI Master Input Slave Output |
+| | GPIO 23 | MOSI | SPI Master Output Slave Input |
+| | 3.3V | Alimentación | Energía 3.3V (desde ESP32 o regulador externo) |
+| | GND | Tierra | Conexión a tierra común |
+| **Servomotor Entrada** | GPIO 13 | PWM / Señal | Control de la Barrera de Entrada |
+| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
+| | GND | Tierra | Conexión a tierra común |
+| **Servomotor Salida** | GPIO 14 | PWM / Señal | Control de la Barrera de Salida |
+| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
+| | GND | Tierra | Conexión a tierra común |
+| **Tira NeoPixel (20 LEDs)**| GPIO 15 | DIN / Datos | Señal de datos para WS2812B (2 LEDs por cajón) |
+| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
+| | GND | Tierra | Conexión a tierra común |
+| **FC-51 Entrada (Paso)** | GPIO 16 | OUT | Sensor de detección en la Barrera de Entrada |
+| **FC-51 Salida (Paso)** | GPIO 17 | OUT | Sensor de detección en la Barrera de Salida |
+| **FC-51 Cajón #1** | GPIO 25 | OUT | Sensor de presencia física del Cajón 1 |
+| **FC-51 Cajón #2** | GPIO 26 | OUT | Sensor de presencia física del Cajón 2 |
+| **FC-51 Cajón #3** | GPIO 27 | OUT | Sensor de presencia física del Cajón 3 |
+| **FC-51 Cajón #4** | GPIO 32 | OUT | Sensor de presencia física del Cajón 4 |
+| **FC-51 Cajón #5** | GPIO 33 | OUT | Sensor de presencia física del Cajón 5 |
+| **FC-51 Cajón #6** | GPIO 34 | OUT | Sensor de presencia física del Cajón 6 |
+| **FC-51 Cajón #7** | GPIO 35 | OUT | Sensor de presencia física del Cajón 7 |
+| **FC-51 Cajón #8** | GPIO 36 | OUT | Sensor de presencia física del Cajón 8 |
+| **FC-51 Cajón #9** | GPIO 39 | OUT | Sensor de presencia física del Cajón 9 |
+| **FC-51 Cajón #10** | GPIO 12 | OUT | Sensor de presencia física del Cajón 10 |
+
+---
+
+## ⚡ Lógicas del Sistema y Optimizaciones Aplicadas
+
+### 1. Estabilización Eléctrica y Bypass de BOD (ESP32)
+* **Bypass de Brownout Detector (BOD):** Para evitar que el microcontrolador se reinicie debido a las caídas menores de tensión momentáneas al activar los servomotores SG90, se ha deshabilitado el detector de Brownout del ESP32 por software en el `setup()` mediante:
+  `WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);`
+* **Fuente Externa:** Se utiliza una **Fuente de Poder Switching de 220V AC a 5V DC de 10A (50W)** para suplir la corriente del microcontrolador, los 12 sensores FC-51, las barreras y la tira LED NeoPixel, aislando la carga eléctrica del ESP32 de perturbaciones.
+
+### 2. Estabilización de RFID (Heartbeat & Ganancia)
+* **Heartbeat de Inactividad (4s):** El lector RC522 tiende a congelarse o bloquear el bus SPI tras largos periodos de inactividad o perturbaciones eléctricas. El código ejecuta una re-inicialización del lector (`rfid.PCD_Init()`) cada **4 segundos de inactividad**, recuperando la comunicación automáticamente.
+* **Máxima Sensibilidad:** Al iniciar y re-inicializar el RFID, se configura la ganancia de antena al máximo (`MFRC522::RxGain_max` = 48dB), aumentando el rango y asegurando lecturas instantáneas de tarjetas y llaveros.
+
+### 3. Seguridad: Control de Sesión Única (Single Session)
+* El backend incluye la columna `token_version` en la base de datos de usuarios. Cada inicio de sesión incrementa esta versión.
+* El middleware del backend compara el token del cliente con la versión actual de la base de datos. Si se inicia sesión en un nuevo dispositivo, la sesión anterior es invalidada inmediatamente (HTTP 401).
+* El cliente cuenta con un interceptor en Axios que detecta el vencimiento del token e inicia el `logout` inmediato en la pantalla.
+
+### 4. Lógica de Reservas y Bloqueo Inteligente
+* **Bloqueo por Capacidad Física:** Si los sensores detectan que el estacionamiento cuenta con **5 o más cajones ocupados físicamente**, el sistema bloquea automáticamente la creación de nuevas reservas (tanto en backend como en frontend), devolviendo un error controlado al usuario. Las reservas se habilitan automáticamente en cuanto un vehículo se retira.
+* **Deselección en Tiempo Real:** Si un usuario tiene abierta la vista de reserva en el mapa 3D y otro vehículo se estaciona físicamente en la plaza seleccionada, el frontend deselecciona la plaza en tiempo real y notifica al usuario del cambio.
+
+### 5. Algoritmo de Máquina de Estados para Reportes de Uso
+* El backend procesa los reportes utilizando una máquina de estados limpia:
+  * **Fijación de 24 horas:** El tiempo total se calcula sobre una base de 24 horas (`86,400,000` ms). Tiempo ocupado + Tiempo libre = 24.0h.
+  * **Límite al Tiempo Actual:** Si se consulta el día actual en curso, el sistema calcula la ocupación hasta la hora actual (`now`) en lugar de proyectar a futuro (medianoche), evitando reportes erróneos.
+  * **Filtro de Rebotes:** Filtra eventos duplicados consecutivos (`INGRESO` o `SALIDA` redundantes) provocados por oscilaciones en los sensores FC-51.
 
 ---
 
 ## 📊 Arquitectura de Base de Datos (PostgreSQL)
 
-El sistema emplea un esquema relacional estructurado en torno a las siguientes entidades:
+El sistema emplea un esquema relacional estructurado:
 
 ```mermaid
 erDiagram
@@ -109,6 +173,7 @@ erDiagram
         varchar email "Unique"
         varchar contrasena
         varchar rol "USER | ADMIN"
+        int token_version
     }
     LUGAR {
         int id_lugar PK
@@ -138,161 +203,80 @@ erDiagram
     }
 ```
 
-### Reglas de Negocio e Integración de Datos:
-- **Expiración de Reservas y Expiración Lazy**: Las reservas vencidas en estado `'Espera'` cambian automáticamente a `'Perdida'` tras la hora de reserva, liberando los cupos del estacionamiento.
-- **Historial de Sensores (`registro_vehicular`)**: Cada vez que el estado de disponibilidad de un cajón cambia (ya sea de forma física o simulada), el backend inserta un registro histórico del evento (`INGRESO` o `SALIDA`), el cual alimenta el feed de actividad del panel administrativo.
-- **Estados de Barrera (`barrera`)**: Almacena el estado remoto de la barrera de Entrada (ID 1) y Salida (ID 2). Cuenta con **auto-cierre perezoso (lazy auto-close)**: si una barrera permanece abierta más de 5 segundos, el servidor la cierra automáticamente en la base de datos para prevenir inconsistencias físicas de estado.
-
 ---
 
-## 📡 Integración de Hardware & Firmware (ESP32)
-
-El microcontrolador **ESP32** está programado para interactuar directamente con la API web y los sensores físicos. Utiliza una arquitectura **Multitarea Multinúcleo (FreeRTOS)** para garantizar un rendimiento en tiempo real óptimo:
-
-### Arquitectura de Procesamiento (Doble Núcleo):
-- **Core 0 (Hilo de Red - Background)**:
-  - Realiza las consultas HTTPS lentas al servidor (handshake SSL/TLS y descargas).
-  - Consulta el estado de las barreras en `/api/spaces/barrier/status` cada 1.5 segundos.
-  - Consulta la disponibilidad de cupos cada 5 segundos.
-  - Al recibir un comando de apertura remota, activa banderas volátiles (`cmdAbrirEntrada`/`cmdAbrirSalida`) y actualiza las memorias de cerrojo (latches).
-- **Core 1 (Hilo Principal - Loop Físico)**:
-  - Lee instantáneamente los sensores FC-51 (Entrada en Pin 14, Salida en Pin 4) y el lector RFID RC522 (Pines 5 y 27) a frecuencias de microsegundos.
-  - Acciona los servomotores SG90 (Entrada en Pin 13, Salida en Pin 26) para abrir las barreras físicas al recibir detección de sensor local, tarjeta RFID, o la bandera remota levantada por el Core 0.
-  - Controla el tiempo físico de apertura (5 segundos estrictos) y repinta la pantalla LCD 16x2.
-
-> [!NOTE]
-> Al separar los hilos de red y hardware en núcleos separados, la placa nunca pierde la detección física de un vehículo o RFID mientras realiza las peticiones HTTP del servidor.
-
----
-
-## 📂 Estructura del Repositorio
+## 📁 Estructura del Repositorio
 
 ```text
 EstacionamientoInteligente/
 │
 ├── backend/                       # API Rest en Node.js + Express
-│   ├── config/                    # Configuración de servicios externos
-│   │   └── db.js                  # Inicialización y Pool de conexiones de PostgreSQL
-│   ├── controllers/               # Lógica de negocio por entidad
-│   │   ├── authController.js      # Registro, Login, perfil e información de vehículos
+│   ├── config/                    # Configuración de base de datos
+│   │   └── db.js                  # Pool de conexiones de PostgreSQL
+│   ├── controllers/               # Lógica de negocio
+│   │   ├── authController.js      # Registro, Login e info de perfil
 │   │   ├── reservationsController.js # CRUD y validaciones de reservas
-│   │   └── spacesController.js    # Obtención de lugares con estado dinámico
+│   │   └── spacesController.js    # Control de cajones y reportes
 │   ├── middlewares/               # Validaciones intermedias
-│   │   └── authMiddleware.js      # Validación de tokens JWT y permisos ADMIN
+│   │   └── authMiddleware.js      # Validación de tokens JWT e inactividad
 │   ├── routes/                    # Enrutadores de Express
 │   │   ├── authRoutes.js
 │   │   ├── reservationsRoutes.js
 │   │   └── spacesRoutes.js
-│   ├── .env.example               # Plantilla para variables de entorno del backend
 │   ├── index.js                   # Archivo de inicio del servidor API
-│   ├── inspect_lugar.js           # Script de prueba de base de datos
-│   └── package.json               # Dependencias y scripts del backend
+│   └── package.json               # Dependencias del backend
 │
-└── frontend/                      # Cliente web SPA en React
-    ├── public/                    # Archivos públicos y assets estáticos
-    ├── src/                       # Código fuente de React
-    │   ├── assets/                # Imágenes y recursos estéticos
-    │   ├── components/            # Componentes reutilizables
-    │   │   ├── 3d/
-    │   │   │   └── ParkingLot.jsx # Canvas 3D de plazas usando React Three Fiber
-    │   │   └── Navbar.jsx         # Barra de navegación adaptable al rol
-    │   ├── pages/                 # Componentes de página completos
-    │   │   ├── AdminDashboard.jsx # Vista de administrador (Sensor / Estadísticas)
-    │   │   ├── Dashboard.jsx      # Panel principal de reserva y mapa 3D
-    │   │   ├── Login.jsx          # Acceso de usuarios
-    │   │   └── Register.jsx       # Registro detallado (Persona, Vehículo, Usuario)
-    │   ├── services/              # Clientes de API remota
-    │   │   └── api.js             # Instancia de Axios con interceptor JWT
-    │   ├── store/                 # Gestión de estados compartidos
-    │   │   └── authStore.js       # Store de Zustand para token y sesión de usuario
-    │   ├── App.jsx                # Enrutador y Layout principal
-    │   ├── index.css              # Estilos globales y variables de diseño CSS v4
-    │   └── main.jsx               # Punto de entrada de React
-    ├── vite.config.js             # Configuración de empaquetado Vite y PWA
-    └── package.json               # Dependencias y scripts del frontend
+├── frontend/                      # Cliente web SPA en React
+│   ├── src/                       # Código fuente de React
+│   │   ├── components/            # Componentes reutilizables
+│   │   │   ├── 3d/
+│   │   │   │   └── ParkingLot.jsx # Mapa interactivo 3D con Three.js
+│   │   │   └── Navbar.jsx         # Menú de navegación adaptable
+│   │   ├── pages/                 # Páginas completas
+│   │   │   ├── AdminDashboard.jsx # Panel administrativo
+│   │   │   └── Dashboard.jsx      # Panel de usuario regular
+│   │   ├── services/api.js        # Instancia de Axios con interceptor JWT
+│   │   ├── store/authStore.js     # Store de Zustand para auth y tokens
+│   │   └── index.css              # Estilos globales y variables de Tailwind v4
+│   └── package.json               # Dependencias del frontend
+│
+└── arduino/                       # Código de microcontrolador
+    └── Codigo_ESP32/
+        └── Codigo_ESP32.ino       # Firmware del ESP32 con FreeRTOS
 ```
 
 ---
 
 ## 🛠️ Instrucciones de Instalación y Despliegue
 
-### Requisitos Previos
-- **Node.js** v18 o superior.
-- **PostgreSQL** v14 o superior.
-
----
-
-### Paso 1: Configurar la Base de Datos (PostgreSQL)
-
-1. Crea una base de datos en PostgreSQL llamada `estacionamiento_inteligente` (o el nombre que prefieras).
-2. Asegúrate de crear las tablas siguiendo el modelo relacional descrito en la sección de **Arquitectura de Base de Datos**.
-3. (Opcional) Asegúrate de poblar la tabla `Documento` con los tipos iniciales:
-   ```sql
-   INSERT INTO Documento (tipo) VALUES ('DNI'), ('Pasaporte'), ('Carnet de Extranjería');
-   ```
-4. Registra los lugares de estacionamiento en la tabla `Lugar` (por ejemplo, del 1 al 10) para el correcto renderizado del croquis 3D:
+### Paso 1: Configurar PostgreSQL
+1. Crea una base de datos PostgreSQL llamada `estacionamiento_inteligente`.
+2. Ejecuta el esquema para las tablas (`Lugar`, `Reserva`, `Usuario`, etc.).
+3. Popula la tabla `Lugar` con los cajones del 1 al 10:
    ```sql
    INSERT INTO Lugar (numero, disponible) VALUES 
    (1, true), (2, true), (3, true), (4, true), (5, true),
    (6, true), (7, true), (8, true), (9, true), (10, true);
    ```
 
----
-
-### Paso 2: Despliegue del Backend
-
-1. Dirígete a la carpeta `backend`:
-   ```bash
-   cd backend
-   ```
-2. Instala las dependencias necesarias:
+### Paso 2: Ejecutar Backend
+1. Navega a `backend/` e instala las dependencias:
    ```bash
    npm install
    ```
-3. Crea un archivo `.env` en la raíz de la carpeta `backend` basado en el siguiente ejemplo:
-   ```env
-   PORT=5000
-   JWT_SECRET=tu_secreto_super_seguro_para_jwt
-   DB_USER=tu_usuario_postgres
-   DB_HOST=localhost
-   DB_NAME=estacionamiento_inteligente
-   DB_PASSWORD=tu_contrasena_postgres
-   DB_PORT=5432
-   NODE_ENV=development
-   ```
-4. Inicia el servidor backend:
+2. Configura las credenciales en un archivo `.env` en la raíz de `backend/`.
+3. Inicia el servidor de Node.js:
    ```bash
    npm start
    ```
-   *El backend estará corriendo en el puerto configurado (por defecto: [http://localhost:5000](http://localhost:5000)).*
 
----
-
-### Paso 3: Despliegue del Frontend
-
-1. Abre una nueva consola y dirígete a la carpeta `frontend`:
-   ```bash
-   cd frontend
-   ```
-2. Instala las dependencias:
+### Paso 3: Ejecutar Frontend
+1. Navega a `frontend/` e instala las dependencias:
    ```bash
    npm install
    ```
-3. Inicia el servidor de desarrollo de Vite:
+2. Inicia la aplicación React con Vite:
    ```bash
    npm run dev
    ```
-   *El frontend estará disponible en el puerto indicado por Vite (por defecto: [http://localhost:5173](http://localhost:5173)).*
-
----
-
-## 👥 Roles y Usuarios de Prueba
-
-Para probar ambas facetas de la aplicación, puedes crear dos perfiles distintos mediante el formulario de registro:
-
-- **Usuario Regular**: Al registrarte, la base de datos te asignará automáticamente el rol `USER`. Podrás reservar lugares, registrar tu vehículo y ver tus reservas en el dashboard principal con el croquis interactivo 3D.
-- **Administrador**: Para habilitar un administrador, puedes registrar una cuenta normal y luego actualizar su rol directamente en la base de datos:
-  ```sql
-  UPDATE Usuario SET rol = 'ADMIN' WHERE email = 'tu-email-admin@ejemplo.com';
-  ```
-  Al ingresar con esta cuenta, tendrás acceso al botón **"Admin"** en la barra de navegación que te llevará al panel estadístico, simulador de sensores y cancelador de reservas.
+   *Disponible por defecto en [http://localhost:5173](http://localhost:5173).*
