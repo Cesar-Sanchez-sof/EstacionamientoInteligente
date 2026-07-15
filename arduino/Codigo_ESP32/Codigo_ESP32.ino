@@ -211,7 +211,6 @@ void loop() {
       lastRfidInitTime = millis();
       rfid.PCD_Init();
       rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
-      Serial.println("RFID: Heartbeat re-init (evita congelamientos e incrementa ganancia).");
     }
     
     if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
