@@ -236,8 +236,8 @@ void loop() {
     }
   }
 
-  // 3. Apertura de Entrada (Sensor FC-51 de entrada o Tarjeta RFID)
-  if ((objetoEnEntrada || rfidDetectado) && !entradaAbierta && !bloqueoEntrada) {
+  // 3. Apertura de Entrada (El RFID ignora el bloqueoEntrada; el sensor de paso lo respeta)
+  if ((rfidDetectado || (objetoEnEntrada && !bloqueoEntrada)) && !entradaAbierta) {
     servoEntrada.write(ENTRADA_ABIERTO);
     entradaAbierta = true;
     tiempoAperturaEntrada = millis();
