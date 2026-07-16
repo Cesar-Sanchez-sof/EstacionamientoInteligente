@@ -11,7 +11,8 @@ const {
   getHistoricalUsageReport,
   registerAccessEntry,
   registerAccessExit,
-  getAccessLogs
+  getAccessLogs,
+  getLastScannedRfid
 } = require('../controllers/spacesController');
 const { protect, admin } = require('../middlewares/authMiddleware');
 
@@ -21,6 +22,7 @@ router.put('/public/:id', updateSpaceStatus);
 router.post('/access/entry', registerAccessEntry);
 router.post('/access/exit', registerAccessExit);
 router.get('/access/logs', protect, admin, getAccessLogs);
+router.get('/access/last-scan', protect, admin, getLastScannedRfid);
 router.get('/reports/usage', protect, admin, getHistoricalUsageReport);
 router.get('/logs', protect, admin, getSpacesLogs);
 router.get('/barrier/status', getBarrierStatus);

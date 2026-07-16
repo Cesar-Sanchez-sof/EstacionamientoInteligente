@@ -437,6 +437,7 @@ const registerAccessEntry = async (req, res) => {
   }
 
   try {
+    await saveLastScannedRfid(codigo_rfid);
     const rfidSanitized = codigo_rfid.replace(/\s+/g, '').toUpperCase().trim();
     const userQuery = await db.query(
       `SELECT u.id_usuario, p.primer_nombre, p.primer_apellido 
@@ -479,6 +480,7 @@ const registerAccessExit = async (req, res) => {
   }
 
   try {
+    await saveLastScannedRfid(codigo_rfid);
     const rfidSanitized = codigo_rfid.replace(/\s+/g, '').toUpperCase().trim();
     const userQuery = await db.query(
       `SELECT u.id_usuario, p.primer_nombre, p.primer_apellido 
@@ -534,6 +536,61 @@ const getAccessLogs = async (req, res) => {
   }
 };
 
+const saveLastScannedRfid = async (codigo_rfid) => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS ultimo_escaneo (
+        id INT PRIMARY KEY DEFAULT 1,
+        codigo_rfid VARCHAR(50) NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await db.query(`
+      INSERT INTO ultimo_escaneo (id, codigo_rfid, updated_at)
+      VALUES (1, $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (id) DO UPDATE SET codigo_rfid = EXCLUDED.codigo_rfid, updated_at = EXCLUDED.updated_at
+    `, [codigo_rfid.toUpperCase().trim()]);
+  } catch (error) {
+    console.error('Error saving last scanned RFID:', error);
+  }
+};
+
+const getLastScannedRfid = async (req, res) => {
+  try {
+    const tableCheck = await db.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'ultimo_escaneo'
+      )
+    `);
+    
+    if (!tableCheck.rows[0].exists) {
+      return res.status(200).json({ codigo_rfid: null });
+    }
+    
+    const result = await db.query("SELECT codigo_rfid, updated_at FROM ultimo_escaneo WHERE id = 1");
+    if (result.rows.length === 0) {
+      return res.status(200).json({ codigo_rfid: null });
+    }
+    
+    const scanTime = new Date(result.rows[0].updated_at);
+    const now = new Date();
+    const diffMs = now - scanTime;
+    const diffMins = diffMs / (1000 * 60);
+    
+    if (diffMins > 5) {
+      return res.status(200).json({ codigo_rfid: null, message: 'El último escaneo es antiguo' });
+    }
+    
+    return res.status(200).json({ codigo_rfid: result.rows[0].codigo_rfid });
+  } catch (error) {
+    console.error('Error al obtener el último RFID escaneado:', error);
+    return res.status(500).json({ message: 'Error interno al obtener el último escaneo' });
+  }
+};
+
 module.exports = {
   getSpaces,
   updateSpaceStatus,
@@ -545,5 +602,6 @@ module.exports = {
   getHistoricalUsageReport,
   registerAccessEntry,
   registerAccessExit,
-  getAccessLogs
+  getAccessLogs,
+  getLastScannedRfid
 };

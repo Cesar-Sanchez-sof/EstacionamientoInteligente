@@ -483,6 +483,30 @@ const AdminDashboard = () => {
     setRegisterForm({ ...registerForm, [e.target.name]: e.target.value });
   };
 
+  const handleLoadLastScannedRfid = async (targetForm) => {
+    try {
+      const response = await api.get('/spaces/access/last-scan');
+      if (response.data && response.data.codigo_rfid) {
+        if (targetForm === 'register') {
+          setRegisterForm(prev => ({
+            ...prev,
+            codigo_rfid: response.data.codigo_rfid
+          }));
+        } else if (targetForm === 'edit') {
+          setEditForm(prev => ({
+            ...prev,
+            codigo_rfid: response.data.codigo_rfid
+          }));
+        }
+      } else {
+        alert(response.data.message || 'No se encontró ningún escaneo de tarjeta RFID reciente (últimos 5 minutos). Por favor escanéala físicamente en un lector primero.');
+      }
+    } catch (err) {
+      console.error('Error al obtener último RFID escaneado:', err);
+      alert('Error de red al consultar el último RFID escaneado.');
+    }
+  };
+
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setRegisterError('');
@@ -1267,14 +1291,23 @@ const AdminDashboard = () => {
 
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Código Tarjeta RFID</label>
-                  <input
-                    name="codigo_rfid"
-                    type="text"
-                    placeholder="Ej. A0 B1 C2 D3 (Opcional)"
-                    className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                    value={registerForm.codigo_rfid}
-                    onChange={handleRegisterChange}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      name="codigo_rfid"
+                      type="text"
+                      placeholder="Ej. A0 B1 C2 D3"
+                      className="flex-1 px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={registerForm.codigo_rfid}
+                      onChange={handleRegisterChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleLoadLastScannedRfid('register')}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-gray-700 hover:border-gray-600 transition-all cursor-pointer whitespace-nowrap"
+                    >
+                      Cargar Escaneo
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -1513,14 +1546,23 @@ const AdminDashboard = () => {
 
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Código Tarjeta RFID</label>
-                  <input
-                    name="codigo_rfid"
-                    type="text"
-                    placeholder="Ej. A0 B1 C2 D3"
-                    className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
-                    value={editForm.codigo_rfid}
-                    onChange={handleEditFormChange}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      name="codigo_rfid"
+                      type="text"
+                      placeholder="Ej. A0 B1 C2 D3"
+                      className="flex-1 px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                      value={editForm.codigo_rfid}
+                      onChange={handleEditFormChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleLoadLastScannedRfid('edit')}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-gray-700 hover:border-gray-600 transition-all cursor-pointer whitespace-nowrap"
+                    >
+                      Cargar Escaneo
+                    </button>
+                  </div>
                 </div>
 
                 <div>
