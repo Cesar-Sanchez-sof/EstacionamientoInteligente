@@ -8,6 +8,8 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Adafruit_NeoPixel.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
 const char* ssid = "XIDI";
@@ -80,6 +82,9 @@ const unsigned long statusApiDelay = 1500; // Consultar reservas cada 1.5s
 unsigned long tiempoAperturaEntrada = 0;
 const unsigned long duracionApertura = 5000; // 5 segundos de barrera abierta
 
+unsigned long lastRfidInitTime = 0;
+const unsigned long rfidInitInterval = 4000; // Re-inicializar el RFID cada 4 segundos para evitar congelamientos
+
 // Declaración de funciones
 void verificarCuposServidor();
 void verificarBarrerasServidor();
@@ -90,6 +95,7 @@ void restaurarPantallaLCD();
 void tareaNetwork(void * pvParameters);
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Desactivar detector de brownout para estabilidad eléctrica
   Serial.begin(115200);
   
   // 1. Inicializar I2C y LCD
@@ -110,6 +116,7 @@ void setup() {
   // 3. Inicializar Sensores y RFID
   SPI.begin();
   rfid.PCD_Init();
+  rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
   pinMode(PIN_FC51_ENT, INPUT);
   for (int i = 0; i < NUM_CAJONES; i++) {
     pinMode(pinFC51Cajones[i], INPUT);
@@ -178,7 +185,15 @@ void loop() {
   bool objetoEnEntrada = (digitalRead(PIN_FC51_ENT) == LOW);
 
   // 2. Lectura del lector RFID de Entrada
+  // Heartbeat: Re-inicializa periódicamente el chip RC522 si ha estado inactivo para evitar bloqueos del bus SPI
+  if (millis() - lastRfidInitTime >= rfidInitInterval) {
+    lastRfidInitTime = millis();
+    rfid.PCD_Init();
+    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
+  }
+
   if (!rfidPendingRequest && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    lastRfidInitTime = millis(); // Reiniciar timer de heartbeat para no interrumpir lectura
     // Formatear el UID en una cadena hexadecimal (ej: "A0 B1 C2 D3")
     String uidString = "";
     for (byte i = 0; i < rfid.uid.size; i++) {
@@ -220,6 +235,7 @@ void loop() {
     bloqueoEntrada = true;
     restaurarPantallaLCD();
     rfid.PCD_Init(); // Re-inicializar lector RFID por si hubo caídas de tensión por el servo
+    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max); // Restablecer ganancia máxima de antena
     Serial.println("RFID re-inicializado tras cierre de Entrada.");
   }
   if (!objetoEnEntrada) {
