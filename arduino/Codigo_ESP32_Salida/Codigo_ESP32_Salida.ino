@@ -5,6 +5,8 @@
 #include <ESP32Servo.h>
 #include <SPI.h>
 #include <MFRC522.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
 const char* ssid = "XIDI";
@@ -45,17 +47,22 @@ const unsigned long barrierApiDelay = 1500; // Polling cada 1.5s para la web
 unsigned long tiempoAperturaSalida = 0;
 const unsigned long duracionApertura = 5000; // 5 segundos de barrera abierta
 
+unsigned long lastRfidInitTime = 0;
+const unsigned long rfidInitInterval = 4000; // Re-inicializar el RFID cada 4 segundos para evitar congelamientos
+
 // Declaración de funciones
 void verificarBarrerasServidor();
 void enviarRfidAccesoSalida(const char* uid);
 void tareaNetwork(void * pvParameters);
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Desactivar detector de brownout para estabilidad eléctrica
   Serial.begin(115200);
   
   // 1. Inicializar Sensores y RFID
   SPI.begin();
   rfid.PCD_Init();
+  rfid.PCD_SetAntennaGain(MFRC522::RxGain_max); // Máxima ganancia de antena para mayor sensibilidad
   pinMode(PIN_FC51_SAL, INPUT);
   
   delay(500); // Estabilización eléctrica
@@ -95,7 +102,16 @@ void loop() {
   bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
 
   // 2. Lectura del lector RFID de Salida
+  // Heartbeat: Re-inicializa periódicamente el chip RC522 si ha estado inactivo para evitar bloqueos del bus SPI
+  if (millis() - lastRfidInitTime >= rfidInitInterval) {
+    lastRfidInitTime = millis();
+    rfid.PCD_Init();
+    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
+  }
+
   if (!rfidPendingRequest && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    lastRfidInitTime = millis(); // Reiniciar timer de heartbeat para no interrumpir lectura
+    
     // Formatear el UID en una cadena hexadecimal (ej: "A0 B1 C2 D3")
     String uidString = "";
     for (byte i = 0; i < rfid.uid.size; i++) {
@@ -195,12 +211,17 @@ void enviarRfidAccesoSalida(const char* uid) {
         
         if (success) {
           cmdAbrirSalida = true;
-          Serial.print(">>> Salida RFID concedida a: ");
+          Serial.print(">>> Salida RFID [");
+          Serial.print(uid);
+          Serial.print("] concedida a: ");
           Serial.println(usuario);
         }
       }
     } else {
-      Serial.println(">>> Salida RFID denegada. Tarjeta no valida.");
+      Serial.print(">>> Salida RFID [");
+      Serial.print(uid);
+      Serial.print("] denegada o error de red. Codigo HTTP: ");
+      Serial.println(httpResponseCode);
     }
     http.end();
   }
