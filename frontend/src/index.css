@@ -5,6 +5,12 @@
   --neon-green: #00ff66;
   --neon-red: #ff0055;
   --dark-bg: #0f172a;
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #0f172a;
+  color: #f8fafc;
 }
 
 body {
