@@ -89,7 +89,7 @@ const ParkingSpace = ({ position, number, statusColor, onClick }) => {
 
 const ParkingLot = ({ spaces, onSelectSpace, selectedSpace }) => {
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-2xl glass-panel">
+    <div className="w-full h-[350px] md:h-[500px] rounded-xl overflow-hidden shadow-2xl glass-panel">
       <Canvas camera={{ position: [0, 10, 15], fov: 50 }}>
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
