@@ -48,6 +48,7 @@ volatile bool cmdAbrirEntrada = false;
 volatile int espaciosLibres = 0;
 volatile int espaciosTotales = 0;
 volatile bool datosRecibidos = false; 
+volatile int ultimoErrorHttp = 0; 
 
 // Estado físico de ocupación de cajones (true = libre, false = ocupado)
 bool estadoFisico[NUM_CAJONES] = {true, true, true, true, true, true, true, true, true, true};
@@ -415,6 +416,9 @@ void verificarCuposServidor() {
     http.addHeader("User-Agent", "ESP32-Entrada");
     
     int httpResponseCode = http.GET();
+    Serial.print("verificarCuposServidor - HTTP Response: ");
+    Serial.println(httpResponseCode);
+
     if (httpResponseCode == 200) {
       String payload = http.getString();
 #if ARDUINOJSON_VERSION_MAJOR >= 7
@@ -428,7 +432,13 @@ void verificarCuposServidor() {
         espaciosTotales = doc["total"];
         espaciosLibres = doc["free"];
         datosRecibidos = true;
+        ultimoErrorHttp = 0; // Exito
+      } else {
+        ultimoErrorHttp = -999; // Error al parsear JSON
+        Serial.println("verificarCuposServidor - Error al parsear JSON");
       }
+    } else {
+      ultimoErrorHttp = httpResponseCode;
     }
     http.end();
   }
@@ -531,6 +541,9 @@ void restaurarPantallaLCD() {
       lcd.print(espaciosLibres);
       lcd.print(" / ");
       lcd.print(espaciosTotales);
+    } else if (ultimoErrorHttp != 0) {
+      lcd.print("Err HTTP: ");
+      lcd.print(ultimoErrorHttp);
     } else {
       lcd.print("Actualizando...");
     }

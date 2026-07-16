@@ -11,7 +11,7 @@
 // --- CONFIGURACIÓN DE RED WIFI ---
 const char* ssid = "XIDI";
 const char* password = "18011303";
-
+  
 // --- CONFIGURACIÓN DE PINES (ESP32 de 30 Pines) ---
 #define SS_PIN           5
 #define RST_PIN          4
