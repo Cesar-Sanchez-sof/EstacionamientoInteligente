@@ -19,7 +19,8 @@ const registerUser = async (req, res) => {
     segundo_apellido, 
     documento_tipo, 
     documento_numero,
-    placa_vehiculo
+    placa_vehiculo,
+    codigo_rfid
   } = req.body;
   
   if (!email || !password || !confirmPassword || !primer_nombre || !primer_apellido || !segundo_apellido || !documento_tipo || !documento_numero || !placa_vehiculo) {
@@ -84,8 +85,8 @@ const registerUser = async (req, res) => {
 
     // Insert Usuario
     const newUser = await client.query(
-      'INSERT INTO Usuario (id_persona, email, contrasena, rol, token_version) VALUES ($1, $2, $3, $4, 0) RETURNING id_usuario, email, rol, token_version',
-      [id_persona, email, hashedPassword, 'USER']
+      'INSERT INTO Usuario (id_persona, email, contrasena, rol, token_version, codigo_rfid) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id_usuario, email, rol, token_version, codigo_rfid',
+      [id_persona, email, hashedPassword, 'USER', codigo_rfid && codigo_rfid.trim() !== '' ? codigo_rfid.toUpperCase().trim() : null]
     );
 
     await client.query('COMMIT');
@@ -152,7 +153,7 @@ const loginUser = async (req, res) => {
 const getUserProfile = async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id_usuario, u.email, u.rol, p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido, d.tipo, p.numero_documento AS numero 
+      `SELECT u.id_usuario, u.email, u.rol, u.codigo_rfid, p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido, d.tipo, p.numero_documento AS numero 
        FROM Usuario u 
        JOIN Persona p ON u.id_persona = p.id_persona 
        JOIN Documento d ON p.id_documento = d.id_documento
@@ -268,7 +269,8 @@ const adminUpdateUser = async (req, res) => {
     primer_apellido, 
     segundo_apellido, 
     documento_tipo, 
-    documento_numero 
+    documento_numero,
+    codigo_rfid
   } = req.body;
 
   const client = await db.pool.connect();
@@ -298,6 +300,19 @@ const adminUpdateUser = async (req, res) => {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
       await client.query('UPDATE Usuario SET contrasena = $1 WHERE id_usuario = $2', [hashedPassword, id]);
+    }
+
+    // 3.5. Si se proporciona código RFID, verificar unicidad y actualizar
+    if (codigo_rfid !== undefined) {
+      const formattedRfid = codigo_rfid && codigo_rfid.trim() !== '' ? codigo_rfid.toUpperCase().trim() : null;
+      if (formattedRfid) {
+        const rfidExists = await client.query('SELECT * FROM Usuario WHERE codigo_rfid = $1 AND id_usuario != $2', [formattedRfid, id]);
+        if (rfidExists.rows.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ message: 'El código RFID ya está registrado por otro usuario' });
+        }
+      }
+      await client.query('UPDATE Usuario SET codigo_rfid = $1 WHERE id_usuario = $2', [formattedRfid, id]);
     }
 
     // 4. Actualizar datos de Persona si se proveen
@@ -368,7 +383,7 @@ const adminUpdateUser = async (req, res) => {
 const getAllUsers = async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id_usuario, u.email, u.rol, u.created_at, 
+      `SELECT u.id_usuario, u.email, u.rol, u.codigo_rfid, u.created_at, 
               p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido, 
               d.tipo AS documento_tipo, p.numero_documento
        FROM Usuario u 

@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, Legend 
 } from 'recharts';
 import { 
-  Users, BarChart3, Car, Search, CheckCircle, XCircle, AlertCircle, Clock, Calendar, FileText, Download
+  Users, BarChart3, Car, Search, CheckCircle, XCircle, AlertCircle, Clock, Calendar, FileText, Download, CreditCard, Shield
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -153,7 +153,8 @@ const AdminDashboard = () => {
     placa_vehiculo: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    codigo_rfid: ''
   });
   const [registerError, setRegisterError] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState('');
@@ -168,8 +169,15 @@ const AdminDashboard = () => {
     documento_tipo: 'DNI',
     documento_numero: '',
     email: '',
-    password: ''
+    password: '',
+    codigo_rfid: ''
   });
+
+  // Access Logs States
+  const [accessLogs, setAccessLogs] = useState([]);
+  const [accessLogsSearch, setAccessLogsSearch] = useState('');
+  const [accessLogsTypeFilter, setAccessLogsTypeFilter] = useState('ALL');
+  const [accessLogsLoading, setAccessLogsLoading] = useState(false);
   const [editingUserVehicles, setEditingUserVehicles] = useState([]);
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
   const [editError, setEditError] = useState('');
@@ -201,7 +209,8 @@ const AdminDashboard = () => {
       documento_tipo: u.documento_tipo || 'DNI',
       documento_numero: u.numero_documento || '',
       email: u.email || '',
-      password: ''
+      password: '',
+      codigo_rfid: u.codigo_rfid || ''
     });
     try {
       const response = await api.get(`/auth/admin/users/${u.id_usuario}/vehicles`);
@@ -322,6 +331,55 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   };
+
+  const fetchAccessLogs = async () => {
+    try {
+      setAccessLogsLoading(true);
+      const response = await api.get('/spaces/access/logs');
+      setAccessLogs(response.data);
+    } catch (err) {
+      console.error('Error al obtener historial de accesos:', err);
+    } finally {
+      setAccessLogsLoading(false);
+    }
+  };
+
+  const exportAccessLogsToCSV = () => {
+    if (accessLogs.length === 0) return;
+    
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+    csvContent += "ID Acceso,Usuario,Email,Placa Vehículo,Tipo Acceso,Tarjeta RFID,Fecha y Hora\n";
+    
+    filteredAccessLogs.forEach(row => {
+      const fecha = new Date(row.fecha_hora).toLocaleString();
+      csvContent += `${row.id_acceso},"${row.primer_nombre} ${row.primer_apellido}",${row.email},${row.placa_vehiculo},${row.tipo},${row.codigo_rfid},"${fecha}"\n`;
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `historial_accesos_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const filteredAccessLogs = accessLogs.filter(log => {
+    const searchMatch = 
+      `${log.primer_nombre} ${log.primer_apellido}`.toLowerCase().includes(accessLogsSearch.toLowerCase()) ||
+      log.email.toLowerCase().includes(accessLogsSearch.toLowerCase()) ||
+      log.codigo_rfid.toLowerCase().includes(accessLogsSearch.toLowerCase()) ||
+      log.placa_vehiculo.toLowerCase().includes(accessLogsSearch.toLowerCase());
+      
+    const typeMatch = accessLogsTypeFilter === 'ALL' || log.tipo === accessLogsTypeFilter;
+    return searchMatch && typeMatch;
+  });
+
+  useEffect(() => {
+    if (activeTab === 'access_logs') {
+      fetchAccessLogs();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user || user.rol !== 'ADMIN') {
@@ -466,7 +524,8 @@ const AdminDashboard = () => {
         placa_vehiculo: '',
         email: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        codigo_rfid: ''
       });
       // Refresh user list
       const usersRes = await api.get('/auth/users');
@@ -642,6 +701,17 @@ const AdminDashboard = () => {
           >
             <FileText size={16} />
             Reportes de Uso
+          </button>
+          <button
+            onClick={() => setActiveTab('access_logs')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all flex-1 md:flex-none ${
+              activeTab === 'access_logs'
+                ? 'bg-[var(--neon-blue)] text-black shadow-[0_0_15px_rgba(0,243,255,0.3)]'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <CreditCard size={16} />
+            Control de Accesos
           </button>
         </div>
       </div>
@@ -1196,6 +1266,18 @@ const AdminDashboard = () => {
                 </div>
 
                 <div>
+                  <label className="text-xs text-gray-400 block mb-1">Código Tarjeta RFID</label>
+                  <input
+                    name="codigo_rfid"
+                    type="text"
+                    placeholder="Ej. A0 B1 C2 D3 (Opcional)"
+                    className="w-full px-3 py-2 border border-gray-600 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={registerForm.codigo_rfid}
+                    onChange={handleRegisterChange}
+                  />
+                </div>
+
+                <div>
                   <label className="text-xs text-gray-400 block mb-1">Contraseña *</label>
                   <input
                     name="password"
@@ -1253,6 +1335,7 @@ const AdminDashboard = () => {
                       <th className="px-6 py-3">Nombre</th>
                       <th className="px-6 py-3">Email</th>
                       <th className="px-6 py-3">Documento</th>
+                      <th className="px-6 py-3">Tarjeta RFID</th>
                       <th className="px-6 py-3">Rol</th>
                       <th className="px-6 py-3">Registro</th>
                       <th className="px-6 py-3 text-center">Acciones</th>
@@ -1270,6 +1353,9 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)]">{u.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">
                           <span className="text-gray-500 mr-1.5">{u.documento_tipo}:</span>{u.numero_documento}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">
+                          {u.codigo_rfid || <span className="text-gray-600">Ninguna</span>}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
@@ -1426,6 +1512,18 @@ const AdminDashboard = () => {
                 </div>
 
                 <div>
+                  <label className="text-xs text-gray-400 block mb-1">Código Tarjeta RFID</label>
+                  <input
+                    name="codigo_rfid"
+                    type="text"
+                    placeholder="Ej. A0 B1 C2 D3"
+                    className="w-full px-3 py-2 border border-gray-650 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                    value={editForm.codigo_rfid}
+                    onChange={handleEditFormChange}
+                  />
+                </div>
+
+                <div>
                   <label className="text-xs text-gray-400 block mb-1">Contraseña (Dejar vacío para mantener actual)</label>
                   <input
                     name="password"
@@ -1488,6 +1586,116 @@ const AdminDashboard = () => {
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: CONTROL DE ACCESOS (RFID LOGS) */}
+      {activeTab === 'access_logs' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Filters and Controls */}
+          <div className="glass-panel p-6 rounded-xl border border-gray-800 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <CreditCard className="text-[var(--neon-blue)]" size={20} />
+                  Control de Accesos (RFID)
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">Historial de ingresos y salidas del personal registrado con tarjetas físicas</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchAccessLogs}
+                  className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 text-sm font-semibold transition-all border border-gray-700 cursor-pointer"
+                >
+                  Actualizar
+                </button>
+                <button
+                  onClick={exportAccessLogsToCSV}
+                  disabled={filteredAccessLogs.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg hover:brightness-110 disabled:opacity-50 text-sm font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] cursor-pointer"
+                >
+                  <Download size={16} />
+                  Exportar CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar por usuario, email, placa o RFID..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-700 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                  value={accessLogsSearch}
+                  onChange={(e) => setAccessLogsSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Type Filter */}
+              <div>
+                <select
+                  className="w-full px-3 py-2 border border-gray-700 bg-gray-850 text-white rounded-lg focus:outline-none focus:ring-[var(--neon-blue)] focus:border-[var(--neon-blue)] text-sm"
+                  value={accessLogsTypeFilter}
+                  onChange={(e) => setAccessLogsTypeFilter(e.target.value)}
+                >
+                  <option value="ALL">Todos los Movimientos</option>
+                  <option value="INGRESO">Solo Ingresos</option>
+                  <option value="SALIDA">Solo Salidas</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Logs Table */}
+          <div className="glass-panel rounded-xl border border-gray-800 overflow-hidden">
+            <div className="overflow-x-auto">
+              {accessLogsLoading ? (
+                <div className="text-center py-12 text-gray-400">Cargando historial de accesos...</div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-800">
+                  <thead>
+                    <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider bg-slate-900/40">
+                      <th className="px-6 py-3.5">Usuario</th>
+                      <th className="px-6 py-3.5">Email</th>
+                      <th className="px-6 py-3.5">Vehículo</th>
+                      <th className="px-6 py-3.5">Tarjeta RFID</th>
+                      <th className="px-6 py-3.5 text-center">Tipo</th>
+                      <th className="px-6 py-3.5">Fecha y Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/80">
+                    {filteredAccessLogs.map((log) => (
+                      <tr key={log.id_acceso} className="hover:bg-slate-800/20 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-medium">
+                          {log.primer_nombre} {log.primer_apellido}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--neon-blue)]">{log.email}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{log.placa_vehiculo}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">{log.codigo_rfid}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                          <span className={`px-2.5 py-1 rounded text-xs font-bold ${
+                            log.tipo === 'INGRESO'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                          }`}>
+                            {log.tipo}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                          {new Date(log.fecha_hora).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!accessLogsLoading && filteredAccessLogs.length === 0 && (
+                <div className="text-center py-12 text-gray-500">No se encontraron registros de acceso.</div>
+              )}
+            </div>
           </div>
         </div>
       )}

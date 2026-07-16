@@ -430,6 +430,110 @@ const getHistoricalUsageReport = async (req, res) => {
   }
 };
 
+const registerAccessEntry = async (req, res) => {
+  const { codigo_rfid } = req.body;
+  if (!codigo_rfid) {
+    return res.status(400).json({ success: false, message: 'Código RFID es requerido' });
+  }
+
+  try {
+    const rfidSanitized = codigo_rfid.replace(/\s+/g, '').toUpperCase().trim();
+    const userQuery = await db.query(
+      `SELECT u.id_usuario, p.primer_nombre, p.primer_apellido 
+       FROM Usuario u
+       JOIN Persona p ON u.id_persona = p.id_persona
+       WHERE REPLACE(u.codigo_rfid, ' ', '') = $1`,
+      [rfidSanitized]
+    );
+
+    if (userQuery.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tarjeta RFID no registrada' });
+    }
+
+    const user = userQuery.rows[0];
+    const nombreCompleto = `${user.primer_nombre} ${user.primer_apellido}`;
+
+    await db.query(
+      `INSERT INTO historial_accesos (id_usuario, tipo, codigo_rfid) 
+       VALUES ($1, 'INGRESO', $2)`,
+      [user.id_usuario, codigo_rfid.toUpperCase().trim()]
+    );
+
+    await db.query("UPDATE barrera SET estado = 'ABIERTA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 1");
+
+    return res.status(200).json({
+      success: true,
+      message: 'Acceso de entrada concedido',
+      usuario: nombreCompleto
+    });
+  } catch (error) {
+    console.error('Error al registrar acceso de entrada:', error);
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+};
+
+const registerAccessExit = async (req, res) => {
+  const { codigo_rfid } = req.body;
+  if (!codigo_rfid) {
+    return res.status(400).json({ success: false, message: 'Código RFID es requerido' });
+  }
+
+  try {
+    const rfidSanitized = codigo_rfid.replace(/\s+/g, '').toUpperCase().trim();
+    const userQuery = await db.query(
+      `SELECT u.id_usuario, p.primer_nombre, p.primer_apellido 
+       FROM Usuario u
+       JOIN Persona p ON u.id_persona = p.id_persona
+       WHERE REPLACE(u.codigo_rfid, ' ', '') = $1`,
+      [rfidSanitized]
+    );
+
+    if (userQuery.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tarjeta RFID no registrada' });
+    }
+
+    const user = userQuery.rows[0];
+    const nombreCompleto = `${user.primer_nombre} ${user.primer_apellido}`;
+
+    await db.query(
+      `INSERT INTO historial_accesos (id_usuario, tipo, codigo_rfid) 
+       VALUES ($1, 'SALIDA', $2)`,
+      [user.id_usuario, codigo_rfid.toUpperCase().trim()]
+    );
+
+    await db.query("UPDATE barrera SET estado = 'ABIERTA', updated_at = CURRENT_TIMESTAMP WHERE id_barrera = 2");
+
+    return res.status(200).json({
+      success: true,
+      message: 'Acceso de salida concedido',
+      usuario: nombreCompleto
+    });
+  } catch (error) {
+    console.error('Error al registrar acceso de salida:', error);
+    return res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+};
+
+const getAccessLogs = async (req, res) => {
+  try {
+    const logsQuery = await db.query(
+      `SELECT h.id_acceso, h.tipo, h.fecha_hora, h.codigo_rfid,
+              u.email, p.primer_nombre, p.primer_apellido,
+              COALESCE(v.placa_vehiculo, 'SIN PLACA') AS placa_vehiculo
+       FROM historial_accesos h
+       JOIN Usuario u ON h.id_usuario = u.id_usuario
+       JOIN Persona p ON u.id_persona = p.id_persona
+       LEFT JOIN Vehiculo v ON v.id_persona = p.id_persona
+       ORDER BY h.fecha_hora DESC`
+    );
+
+    return res.status(200).json(logsQuery.rows);
+  } catch (error) {
+    console.error('Error al obtener historial de accesos:', error);
+    return res.status(500).json({ message: 'Error interno del servidor al obtener historial' });
+  }
+};
+
 module.exports = {
   getSpaces,
   updateSpaceStatus,
@@ -438,5 +542,8 @@ module.exports = {
   getBarrierStatus,
   openBarrier,
   getPublicSpacesStatus,
-  getHistoricalUsageReport
+  getHistoricalUsageReport,
+  registerAccessEntry,
+  registerAccessExit,
+  getAccessLogs
 };
