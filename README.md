@@ -1,8 +1,8 @@
 # 🚗 Estacionamiento Inteligente (Smart Parking)
 
-Estacionamiento Inteligente es una plataforma web PWA full-stack de última generación diseñada para la gestión, reserva y visualización interactiva de plazas de estacionamiento en tiempo real, integrada directamente con un sistema físico controlado por un microcontrolador ESP32 de 38 pines.
+Estacionamiento Inteligente es una plataforma web PWA full-stack de última generación diseñada para la gestión, reserva y visualización interactiva de plazas de estacionamiento en tiempo real, integrada directamente con un sistema físico controlado por **dos microcontroladores ESP32 (uno principal de 38 pines y otro secundario de 30 pines)**.
 
-Orientada a brindar una experiencia de usuario (UX) sumamente fluida y visualmente impactante, la aplicación destaca por integrar un **croquis tridimensional interactivo (3D)** de la playa de estacionamiento y un panel administrativo con **estadísticas y reportes de uso dinámicos en tiempo real**.
+Orientada a brindar una experiencia de usuario (UX) sumamente fluida y visualmente impactante, la aplicación destaca por integrar un **croquis tridimensional interactivo (3D)** de la playa de estacionamiento, un panel administrativo de **control de accesos RFID de usuarios** y un módulo con **estadísticas y reportes de uso dinámicos en tiempo real**.
 
 ---
 
@@ -63,11 +63,16 @@ El proyecto está dividido en tres áreas de desarrollo:
 
 ## 📡 Integración de Hardware & Configuración de Pines
 
-El microcontrolador **ESP32** está programado para interactuar directamente con la API web. Utiliza una arquitectura **Multitarea de Doble Núcleo (FreeRTOS)** para garantizar un rendimiento óptimo:
+El sistema físico se distribuye en **dos placas de desarrollo ESP32 independientes** que interactúan directamente con la API web del servidor mediante consultas seguras HTTPS. Ambas placas emplean una arquitectura **Multitarea de Doble Núcleo (FreeRTOS)** para optimizar el rendimiento y evitar latencias físicas:
 * **Core 0 (Hilo de Red - Background)**: Realiza consultas HTTPS lentas al servidor (comprobando estado de barreras remotas cada 1.5s y estado de cajones cada 5s) sin bloquear las lecturas físicas.
-* **Core 1 (Hilo Principal - Loop Físico)**: Realiza la lectura del lector RFID RC522, activa los servomotores al instante al detectar tarjetas o paso de autos, y actualiza la pantalla LCD 16x2.
+* **Core 1 (Hilo Principal - Loop Físico)**: Lee instantáneamente las tarjetas RFID, maneja los servomotores al instante al detectar tarjetas o autos, y actualiza la pantalla y LEDs.
 
-### 📋 Tabla de Conexión de Pines (ESP32 de 38 Pines)
+---
+
+### 1️⃣ ESP32 Principal (38 Pines) - Control de Entrada y Cajones
+Esta placa está a cargo de gestionar el acceso en la barrera de entrada, el conteo total de cupos en el LCD, los 10 sensores de cajones individuales y la tira de 20 LEDs NeoPixel.
+
+#### 📋 Tabla de Conexión de Pines (ESP32 de 38 Pines)
 
 | Componente | Pin ESP32 (GPIO) | Función / Señal | Descripción |
 |---|---|---|---|
@@ -75,24 +80,20 @@ El microcontrolador **ESP32** está programado para interactuar directamente con
 | | GPIO 22 | SCL | Línea de reloj I2C |
 | | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
 | | GND | Tierra | Conexión a tierra común |
-| **Lector RFID MFRC522** | GPIO 5 | SDA / SS | Select Pin (SPI SS) |
+| **Lector RFID MFRC522 (Entrada)** | GPIO 5 | SDA / SS | Select Pin (SPI SS) |
 | | GPIO 4 | RST | Reset Pin |
 | | GPIO 18 | SCK | SPI Clock |
 | | GPIO 19 | MISO | SPI Master Input Slave Output |
 | | GPIO 23 | MOSI | SPI Master Output Slave Input |
 | | 3.3V | Alimentación | Energía 3.3V (desde ESP32 o regulador externo) |
 | | GND | Tierra | Conexión a tierra común |
-| **Servomotor Entrada** | GPIO 13 | PWM / Señal | Control de la Barrera de Entrada |
-| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
-| | GND | Tierra | Conexión a tierra común |
-| **Servomotor Salida** | GPIO 14 | PWM / Señal | Control de la Barrera de Salida |
+| **Servomotor Entrada** | GPIO 13 | PWM / Señal | Control de la Barrera de Entrada (Cerrado=90°, Abierto=0°) |
 | | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
 | | GND | Tierra | Conexión a tierra común |
 | **Tira NeoPixel (20 LEDs)**| GPIO 15 | DIN / Datos | Señal de datos para WS2812B (2 LEDs por cajón) |
 | | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
 | | GND | Tierra | Conexión a tierra común |
 | **FC-51 Entrada (Paso)** | GPIO 16 | OUT | Sensor de detección en la Barrera de Entrada |
-| **FC-51 Salida (Paso)** | GPIO 17 | OUT | Sensor de detección en la Barrera de Salida |
 | **FC-51 Cajón #1** | GPIO 25 | OUT | Sensor de presencia física del Cajón 1 |
 | **FC-51 Cajón #2** | GPIO 26 | OUT | Sensor de presencia física del Cajón 2 |
 | **FC-51 Cajón #3** | GPIO 27 | OUT | Sensor de presencia física del Cajón 3 |
@@ -103,6 +104,27 @@ El microcontrolador **ESP32** está programado para interactuar directamente con
 | **FC-51 Cajón #8** | GPIO 36 | OUT | Sensor de presencia física del Cajón 8 |
 | **FC-51 Cajón #9** | GPIO 39 | OUT | Sensor de presencia física del Cajón 9 |
 | **FC-51 Cajón #10** | GPIO 12 | OUT | Sensor de presencia física del Cajón 10 |
+
+---
+
+### 2️⃣ ESP32 Secundario (30 Pines) - Control de la Barrera de Salida
+Esta placa está dedicada exclusivamente a gestionar la salida de vehículos del estacionamiento validando su tarjeta autorizada RFID.
+
+#### 📋 Tabla de Conexión de Pines (ESP32 de 30 Pines)
+
+| Componente | Pin ESP32 (GPIO) | Función / Señal | Descripción |
+|---|---|---|---|
+| **Lector RFID MFRC522 (Salida)** | GPIO 5 | SDA / SS | Select Pin (SPI SS) |
+| | GPIO 4 | RST | Reset Pin |
+| | GPIO 18 | SCK | SPI Clock |
+| | GPIO 19 | MISO | SPI Master Input Slave Output |
+| | GPIO 23 | MOSI | SPI Master Output Slave Input |
+| | 3.3V | Alimentación | Energía 3.3V (desde ESP32 o regulador externo) |
+| | GND | Tierra | Conexión a tierra común |
+| **Servomotor Salida** | GPIO 13 | PWM / Señal | Control de la Barrera de Salida (Cerrado=0°, Abierto=90°) |
+| | VCC (5V) | Alimentación | Energía 5V (desde la fuente externa) |
+| | GND | Tierra | Conexión a tierra común |
+| **FC-51 Salida (Paso)** | GPIO 16 | OUT | Sensor de detección en la Barrera de Salida |
 
 ---
 
@@ -130,17 +152,7 @@ El microcontrolador **ESP32** está programado para interactuar directamente con
 * El backend procesa los reportes utilizando una máquina de estados limpia:
   * **Fijación de 24 horas:** El tiempo total se calcula sobre una base de 24 horas (`86,400,000` ms). Tiempo ocupado + Tiempo libre = 24.0h.
   * **Límite al Tiempo Actual:** Si se consulta el día actual en curso, el sistema calcula la ocupación hasta la hora actual (`now`) en lugar de proyectar a futuro (medianoche), evitando reportes erróneos.
-  * **Filtro de Rebotes:** Filtra eventos duplicados consecutivos (`INGRESO` o `SALIDA` redundantes) provocados por oscilaciones en los sensores FC-51.
-
----
-
-## 📊 Arquitectura de Base de Datos (PostgreSQL)
-
-El sistema emplea un esquema relacional estructurado:
-
-```mermaid
-erDiagram
-    DOCUMENTO ||--o{ PERSONA : "identifica"
+  * **Filtro de Rebotes:** Filtra eventos duplicados consecutivos (`INGRESO` o `SALIDA` re    DOCUMENTO ||--o{ PERSONA : "identifica"
     PERSONA ||--|| USUARIO : "es"
     PERSONA ||--o{ VEHICULO : "posee"
     USUARIO ||--o{ RESERVA : "realiza"
@@ -148,7 +160,8 @@ erDiagram
     VEHICULO ||--o{ RESERVA : "se asigna a"
     LUGAR ||--o{ REGISTRO_VEHICULAR : "registra actividad"
     BARRERA ||--|| USUARIO : "operada por"
-
+    USUARIO ||--o{ HISTORIAL_ACCESOS : "registra acceso"
+ 
     DOCUMENTO {
         int id_documento PK
         varchar tipo "DNI, Pasaporte, Carnet de Extranjería"
@@ -173,6 +186,7 @@ erDiagram
         varchar email "Unique"
         varchar contrasena
         varchar rol "USER | ADMIN"
+        varchar codigo_rfid "Unique"
         int token_version
     }
     LUGAR {
@@ -193,6 +207,21 @@ erDiagram
     REGISTRO_VEHICULAR {
         int id_registro PK
         int id_lugar FK
+        varchar tipo "INGRESO | SALIDA"
+        timestamptz fecha_hora
+    }
+    BARRERA {
+        int id_barrera PK
+        varchar estado "ABIERTA | CERRADA"
+        timestamptz updated_at
+    }
+    HISTORIAL_ACCESOS {
+        int id_acceso PK
+        int id_usuario FK
+        varchar tipo "INGRESO | SALIDA"
+        varchar codigo_rfid
+        timestamptz fecha_hora
+    }r FK
         varchar tipo "INGRESO | SALIDA"
         timestamptz fecha_hora
     }
@@ -240,9 +269,11 @@ EstacionamientoInteligente/
 │   │   └── index.css              # Estilos globales y variables de Tailwind v4
 │   └── package.json               # Dependencias del frontend
 │
-└── arduino/                       # Código de microcontrolador
-    └── Codigo_ESP32/
-        └── Codigo_ESP32.ino       # Firmware del ESP32 con FreeRTOS
+└── arduino/                       # Código de microcontroladores
+    ├── Codigo_ESP32_Entrada/
+    │   └── Codigo_ESP32_Entrada.ino # Firmware ESP32 Principal (38 pines)
+    └── Codigo_ESP32_Salida/
+        └── Codigo_ESP32_Salida.ino  # Firmware ESP32 Secundario (30 pines)
 ```
 
 ---
