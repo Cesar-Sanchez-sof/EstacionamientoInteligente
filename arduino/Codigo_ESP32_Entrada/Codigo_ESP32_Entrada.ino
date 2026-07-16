@@ -395,10 +395,10 @@ void enviarRfidAccesoEntrada(const char* uid) {
     } else {
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("ACCESO DENEGADO ");
+      lcd.print("LECTURA RFID OK ");
       lcd.setCursor(0, 1);
-      lcd.print("Tarjeta Invalida");
-      Serial.println(">>> Acceso RFID denegado.");
+      lcd.print("No Registrada   ");
+      Serial.println(">>> Acceso RFID leido pero no registrado.");
       delay(1500);
       restaurarPantallaLCD();
     }

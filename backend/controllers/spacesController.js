@@ -584,7 +584,10 @@ const getLastScannedRfid = async (req, res) => {
       return res.status(200).json({ codigo_rfid: null, message: 'El último escaneo es antiguo' });
     }
     
-    return res.status(200).json({ codigo_rfid: result.rows[0].codigo_rfid });
+    return res.status(200).json({ 
+      codigo_rfid: result.rows[0].codigo_rfid, 
+      updated_at: result.rows[0].updated_at 
+    });
   } catch (error) {
     console.error('Error al obtener el último RFID escaneado:', error);
     return res.status(500).json({ message: 'Error interno al obtener el último escaneo' });

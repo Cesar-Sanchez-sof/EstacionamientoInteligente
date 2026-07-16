@@ -178,6 +178,12 @@ const AdminDashboard = () => {
   const [accessLogsSearch, setAccessLogsSearch] = useState('');
   const [accessLogsTypeFilter, setAccessLogsTypeFilter] = useState('ALL');
   const [accessLogsLoading, setAccessLogsLoading] = useState(false);
+
+  // RFID scanning interaction states
+  const [scanningTarget, setScanningTarget] = useState(null); // 'register' or 'edit'
+  const [scanningCountdown, setScanningCountdown] = useState(15);
+  const [scanStartTime, setScanStartTime] = useState(null);
+
   const [editingUserVehicles, setEditingUserVehicles] = useState([]);
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
   const [editError, setEditError] = useState('');
@@ -381,6 +387,59 @@ const AdminDashboard = () => {
     }
   }, [activeTab]);
 
+  // Polling for new RFID scan
+  useEffect(() => {
+    if (!scanningTarget) return;
+
+    let pollingInterval;
+    let countdownInterval;
+
+    // Countdown timer
+    countdownInterval = setInterval(() => {
+      setScanningCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(pollingInterval);
+          clearInterval(countdownInterval);
+          setScanningTarget(null);
+          alert('Tiempo de espera agotado. Por favor, intente de nuevo.');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Polling API
+    pollingInterval = setInterval(async () => {
+      try {
+        const response = await api.get('/spaces/access/last-scan');
+        if (response.data && response.data.codigo_rfid) {
+          const scanTime = new Date(response.data.updated_at);
+          // Check if this scan is new (after the countdown started)
+          if (scanTime >= scanStartTime) {
+            clearInterval(pollingInterval);
+            clearInterval(countdownInterval);
+            
+            const detectedUid = response.data.codigo_rfid;
+            if (scanningTarget === 'register') {
+              setRegisterForm(prev => ({ ...prev, codigo_rfid: detectedUid }));
+            } else if (scanningTarget === 'edit') {
+              setEditForm(prev => ({ ...prev, codigo_rfid: detectedUid }));
+            }
+            
+            setScanningTarget(null);
+          }
+        }
+      } catch (err) {
+        console.error('Error polling last scan:', err);
+      }
+    }, 1500);
+
+    return () => {
+      clearInterval(pollingInterval);
+      clearInterval(countdownInterval);
+    };
+  }, [scanningTarget, scanStartTime]);
+
   useEffect(() => {
     if (!user || user.rol !== 'ADMIN') {
       navigate('/');
@@ -483,28 +542,10 @@ const AdminDashboard = () => {
     setRegisterForm({ ...registerForm, [e.target.name]: e.target.value });
   };
 
-  const handleLoadLastScannedRfid = async (targetForm) => {
-    try {
-      const response = await api.get('/spaces/access/last-scan');
-      if (response.data && response.data.codigo_rfid) {
-        if (targetForm === 'register') {
-          setRegisterForm(prev => ({
-            ...prev,
-            codigo_rfid: response.data.codigo_rfid
-          }));
-        } else if (targetForm === 'edit') {
-          setEditForm(prev => ({
-            ...prev,
-            codigo_rfid: response.data.codigo_rfid
-          }));
-        }
-      } else {
-        alert(response.data.message || 'No se encontró ningún escaneo de tarjeta RFID reciente (últimos 5 minutos). Por favor escanéala físicamente en un lector primero.');
-      }
-    } catch (err) {
-      console.error('Error al obtener último RFID escaneado:', err);
-      alert('Error de red al consultar el último RFID escaneado.');
-    }
+  const handleLoadLastScannedRfid = (targetForm) => {
+    setScanStartTime(new Date());
+    setScanningCountdown(15);
+    setScanningTarget(targetForm);
   };
 
   const handleRegisterSubmit = async (e) => {
@@ -671,6 +712,33 @@ const AdminDashboard = () => {
         }`}>
           <div className="w-2 h-2 rounded-full animate-ping bg-current"></div>
           <span className="font-semibold text-sm">{barrierAlert.message}</span>
+        </div>
+      )}
+
+      {/* Modal de escaneo de tarjeta RFID */}
+      {scanningTarget && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+          <div className="glass-panel p-8 rounded-xl max-w-md w-full border border-gray-800 text-center space-y-4 shadow-[0_0_50px_rgba(0,243,255,0.15)]">
+            <div className="w-16 h-16 rounded-full border-4 border-t-[var(--neon-blue)] border-slate-800 animate-spin mx-auto flex items-center justify-center">
+              <CreditCard className="text-[var(--neon-blue)] animate-pulse" size={24} />
+            </div>
+            <h3 className="text-lg font-bold text-white font-mono uppercase tracking-wider">Esperando Tarjeta</h3>
+            <p className="text-sm text-gray-300">
+              A continuación, acerque y ponga la tarjeta sobre el sensor lector de Entrada.
+            </p>
+            <div className="py-2 px-4 bg-slate-900/50 rounded-lg inline-block font-mono text-xs text-[var(--neon-blue)] border border-gray-800">
+              Tiempo restante: {scanningCountdown}s
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setScanningTarget(null)}
+                className="px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 text-xs font-bold border border-gray-700 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
