@@ -15,6 +15,10 @@
 const char* ssid = "XIDI";
 const char* password = "18011303";
 
+// --- CONFIGURACIÓN DE BACKEND ---
+// Autodetecta http o https. Puedes usar "http://192.168.x.x:5000" en local o tu URL de Vercel
+const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
+
 // --- CONFIGURACIÓN DE PINES (ESP32 de 38 Pines) ---
 #define I2C_SDA          21
 #define I2C_SCL          22
@@ -45,7 +49,7 @@ Adafruit_NeoPixel pixels(NUM_LEDS, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 bool entradaAbierta = false; 
 bool bloqueoEntrada = false; 
 
-// --- VARIABLES COMPARTIDAS ENTRE NÚCLEOS (THREAD-SAFE / VOLATILE) ---
+// --- VARIABLES COMPARTIDAS ENTRE NÚCLEOS ---
 volatile bool cmdAbrirEntrada = false;
 volatile int espaciosLibres = 0;
 volatile int espaciosTotales = 0;
@@ -86,6 +90,7 @@ unsigned long lastRfidInitTime = 0;
 const unsigned long rfidInitInterval = 4000; // Re-inicializar el RFID cada 4 segundos para evitar congelamientos
 
 // Declaración de funciones
+int makeHttpRequest(String url, String method, String payload, String &responseOut);
 void verificarCuposServidor();
 void verificarBarrerasServidor();
 void consultarReservasServidor();
@@ -185,7 +190,6 @@ void loop() {
   bool objetoEnEntrada = (digitalRead(PIN_FC51_ENT) == LOW);
 
   // 2. Lectura del lector RFID de Entrada
-  // Heartbeat: Re-inicializa periódicamente el chip RC522 si ha estado inactivo para evitar bloqueos del bus SPI
   if (millis() - lastRfidInitTime >= rfidInitInterval) {
     lastRfidInitTime = millis();
     rfid.PCD_Init();
@@ -194,6 +198,7 @@ void loop() {
 
   if (!rfidPendingRequest && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
     lastRfidInitTime = millis(); // Reiniciar timer de heartbeat para no interrumpir lectura
+    
     // Formatear el UID en una cadena hexadecimal (ej: "A0 B1 C2 D3")
     String uidString = "";
     for (byte i = 0; i < rfid.uid.size; i++) {
@@ -210,10 +215,14 @@ void loop() {
     Serial.print("RFID Entrada: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // Copiar UID a la variable compartida para que Core 0 haga la consulta web
-    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-    rfidPendingRequest = true;
-    cmdAbrirEntrada = true; // Abrir la barrera localmente de inmediato al leer la tarjeta
+    // SOLO si se detecta físicamente el vehículo en el sensor FC-51, mandamos la solicitud
+    if (objetoEnEntrada) {
+      // Copiar UID a la variable compartida para que Core 0 haga la consulta web
+      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+      rfidPendingRequest = true;
+    } else {
+      Serial.println("Lectura RFID ignorada: No se detecta vehículo físico en la entrada (FC-51).");
+    }
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -314,236 +323,252 @@ void loop() {
 }
 
 // =========================================================================
-// NÚCLEO 0: TAREA RED / HTTP (PROCESAMIENTO ASÍNCRONO SIN AFECTAR HARDWARE)
+// NÚCLEO 0: TAREA RED / HTTP (PROCESAMIENTO SERIALIZADO Y SEGURO)
 // =========================================================================
 void tareaNetwork(void * pvParameters) {
   for(;;) {
-    // 1. Procesar solicitudes pendientes de validación RFID de entrada
-    if (rfidPendingRequest) {
-      enviarRfidAccesoEntrada((const char*)rfidPendingUid);
-      rfidPendingRequest = false;
-    }
-
-    // 2. Procesar actualizaciones de cajones al servidor (PUT)
-    for (int i = 0; i < NUM_CAJONES; i++) {
-      if (necesitaEnviar[i]) {
-        bool disponible = enviarDisponible[i];
-        int id_lugar = i + 1;
-        enviarEstadoCajon(id_lugar, disponible);
-        necesitaEnviar[i] = false;
+    if (WiFi.status() == WL_CONNECTED) {
+      
+      // 1. Prioridad: Procesar solicitudes de acceso RFID de entrada
+      if (rfidPendingRequest) {
+        enviarRfidAccesoEntrada((const char*)rfidPendingUid);
+        rfidPendingRequest = false;
+        vTaskDelay(pdMS_TO_TICKS(100)); // Pequeña pausa para no solapar sockets
       }
-    }
 
-    // 3. Polling de barreras web (cada 1.5 segundos)
-    if ((millis() - lastBarrierApiTime) > barrierApiDelay || lastBarrierApiTime == 0) {
-      verificarBarrerasServidor();
-      lastBarrierApiTime = millis();
-    }
-    
-    // 4. Polling de cupos totales (cada 5 segundos)
-    if ((millis() - lastApiTime) > apiDelay || lastApiTime == 0) {
-      verificarCuposServidor();
-      lastApiTime = millis();
-    }
+      // 2. Prioridad: Procesar actualizaciones de cajones al servidor (PUT)
+      for (int i = 0; i < NUM_CAJONES; i++) {
+        if (necesitaEnviar[i]) {
+          enviarEstadoCajon(i + 1, enviarDisponible[i]);
+          necesitaEnviar[i] = false;
+          vTaskDelay(pdMS_TO_TICKS(100));
+        }
+      }
 
-    // 5. Polling de reservas de cajones (cada 1.5 segundos)
-    if ((millis() - lastStatusApiTime) > statusApiDelay || lastStatusApiTime == 0) {
-      consultarReservasServidor();
-      lastStatusApiTime = millis();
+      // 3. Polling de barreras web (cada 1.5 segundos)
+      if ((millis() - lastBarrierApiTime) > barrierApiDelay || lastBarrierApiTime == 0) {
+        verificarBarrerasServidor();
+        lastBarrierApiTime = millis();
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
+      
+      // 4. Polling de cupos totales (cada 5 segundos)
+      if ((millis() - lastApiTime) > apiDelay || lastApiTime == 0) {
+        verificarCuposServidor();
+        lastApiTime = millis();
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
+
+      // 5. Polling de reservas de cajones (cada 1.5 segundos)
+      if ((millis() - lastStatusApiTime) > statusApiDelay || lastStatusApiTime == 0) {
+        consultarReservasServidor();
+        lastStatusApiTime = millis();
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
     }
     
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
-void enviarEstadoCajon(int id_lugar, bool disponible) {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    
-    String url = "https://estacionamiento-inteligente.vercel.app/api/spaces/public/" + String(id_lugar);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("User-Agent", "ESP32-Entrada");
-    
-    String body = "{\"disponible\":" + String(disponible ? "true" : "false") + "}";
-    int httpResponseCode = http.PUT(body);
-    http.end();
+// Función auxiliar agnóstica para realizar peticiones HTTP o HTTPS dinámicamente
+int makeHttpRequest(String url, String method, String payload, String &responseOut) {
+  WiFiClient* client = nullptr;
+  WiFiClientSecure* clientSecure = nullptr;
+  bool isHttps = url.startsWith("https://");
+  
+  if (isHttps) {
+    clientSecure = new WiFiClientSecure();
+    clientSecure->setInsecure(); // Omitir verificación de cadena de certificados
+    client = clientSecure;
+  } else {
+    client = new WiFiClient();
   }
+  
+  HTTPClient http;
+  bool beginSuccess = false;
+  
+  if (isHttps) {
+    beginSuccess = http.begin(*clientSecure, url);
+  } else {
+    beginSuccess = http.begin(*client, url);
+  }
+  
+  int httpResponseCode = -1;
+  if (beginSuccess) {
+    http.addHeader("User-Agent", "ESP32-Entrada");
+    if (method == "POST" || method == "PUT") {
+      http.addHeader("Content-Type", "application/json");
+      httpResponseCode = (method == "POST") ? http.POST(payload) : http.PUT(payload);
+    } else {
+      httpResponseCode = http.GET();
+    }
+    
+    if (httpResponseCode > 0) {
+      responseOut = http.getString();
+    } else {
+      Serial.print("HTTP Error en ");
+      Serial.print(url);
+      Serial.print(": ");
+      Serial.println(http.errorToString(httpResponseCode).c_str());
+    }
+    http.end();
+  } else {
+    Serial.println("Fallo al establecer conexión HTTP.");
+  }
+  
+  if (isHttps) {
+    delete clientSecure;
+  } else {
+    delete client;
+  }
+  
+  return httpResponseCode;
+}
+
+void enviarEstadoCajon(int id_lugar, bool disponible) {
+  String url = backendUrl + "/api/spaces/public/" + String(id_lugar);
+  String body = "{\"disponible\":" + String(disponible ? "true" : "false") + "}";
+  String response;
+  makeHttpRequest(url, "PUT", body, response);
 }
 
 void enviarRfidAccesoEntrada(const char* uid) {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/access/entry");
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("User-Agent", "ESP32-Entrada");
-    
-    String body = "{\"codigo_rfid\":\"" + String(uid) + "\"}";
-    
-    int httpResponseCode = http.POST(body);
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
+  String url = backendUrl + "/api/spaces/access/entry";
+  String body = "{\"codigo_rfid\":\"" + String(uid) + "\"}";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "POST", body, response);
+  if (httpResponseCode == 200) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
+    JsonDocument doc;
 #else
-      DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(1024);
 #endif
-      DeserializationError error = deserializeJson(doc, payload);
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      bool success = doc["success"];
+      String usuario = doc["usuario"];
       
-      if (!error) {
-        bool success = doc["success"];
-        String usuario = doc["usuario"];
-        
-        if (success) {
-          cmdAbrirEntrada = true;
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print("ACCESO CONCEDIDO");
-          lcd.setCursor(0, 1);
-          lcd.print(usuario.substring(0, 16)); // Nombre de usuario en pantalla
-          Serial.print(">>> Acceso RFID concedido a: ");
-          Serial.println(usuario);
-          delay(1500); // Dar un momento para leer la pantalla
-        }
+      if (success) {
+        cmdAbrirEntrada = true;
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("ACCESO CONCEDIDO");
+        lcd.setCursor(0, 1);
+        lcd.print(usuario.substring(0, 16)); 
+        Serial.print(">>> Acceso RFID concedido a: ");
+        Serial.println(usuario);
+        delay(1500); 
       }
-    } else {
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("LECTURA RFID OK ");
-      lcd.setCursor(0, 1);
-      lcd.print("No Registrada   ");
-      Serial.println(">>> Acceso RFID leido pero no registrado.");
-      delay(1500);
-      restaurarPantallaLCD();
     }
-    http.end();
+  } else {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("LECTURA RFID OK ");
+    lcd.setCursor(0, 1);
+    lcd.print("No Registrada   ");
+    Serial.println(">>> Acceso RFID leido pero no registrado.");
+    delay(1500);
+    restaurarPantallaLCD();
   }
 }
 
 void verificarCuposServidor() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure(); 
-    HTTPClient http;
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/public/count");
-    http.addHeader("User-Agent", "ESP32-Entrada");
-    
-    int httpResponseCode = http.GET();
-    Serial.print("verificarCuposServidor - HTTP Response: ");
-    Serial.println(httpResponseCode);
-
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
+  String url = backendUrl + "/api/spaces/public/count";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "GET", "", response);
+  if (httpResponseCode == 200) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
+    JsonDocument doc;
 #else
-      DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(1024);
 #endif
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error) {
-        espaciosTotales = doc["total"];
-        espaciosLibres = doc["free"];
-        datosRecibidos = true;
-        ultimoErrorHttp = 0; // Exito
-      } else {
-        ultimoErrorHttp = -999; // Error al parsear JSON
-        Serial.println("verificarCuposServidor - Error al parsear JSON");
-      }
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      espaciosTotales = doc["total"];
+      espaciosLibres = doc["free"];
+      datosRecibidos = true;
+      ultimoErrorHttp = 0; 
     } else {
-      ultimoErrorHttp = httpResponseCode;
+      ultimoErrorHttp = -999; 
     }
-    http.end();
+  } else {
+    ultimoErrorHttp = httpResponseCode;
   }
 }
 
 void verificarBarrerasServidor() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/barrier/status");
-    http.addHeader("User-Agent", "ESP32-Entrada");
-    
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
+  String url = backendUrl + "/api/spaces/barrier/status";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "GET", "", response);
+  if (httpResponseCode == 200) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
+    JsonDocument doc;
 #else
-      DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(1024);
 #endif
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error) {
-        JsonArray arr = doc.as<JsonArray>();
-        for (JsonVariant val : arr) {
-          int id_barrera = val["id_barrera"];
-          String estado = val["estado"];
-          
-          if (id_barrera == 1) { // Entrada
-            if (estado == "ABIERTA") {
-              if (!remotoEntradaProcesado) {
-                cmdAbrirEntrada = true;
-                remotoEntradaProcesado = true;
-              }
-            } else if (estado == "CERRADA") {
-              remotoEntradaProcesado = false;
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      JsonArray arr = doc.as<JsonArray>();
+      for (JsonVariant val : arr) {
+        int id_barrera = val["id_barrera"];
+        String estado = val["estado"];
+        
+        if (id_barrera == 1) { // Entrada
+          if (estado == "ABIERTA") {
+            if (!remotoEntradaProcesado) {
+              cmdAbrirEntrada = true;
+              remotoEntradaProcesado = true;
             }
+          } else if (estado == "CERRADA") {
+            remotoEntradaProcesado = false;
           }
         }
       }
     }
-    http.end();
   }
 }
 
 void consultarReservasServidor() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/public/status");
-    http.addHeader("User-Agent", "ESP32-Entrada");
-    
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
+  String url = backendUrl + "/api/spaces/public/status";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "GET", "", response);
+  if (httpResponseCode == 200) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
+    JsonDocument doc;
 #else
-      DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(2048);
 #endif
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error) {
-        JsonArray arr = doc.as<JsonArray>();
-        for (JsonVariant val : arr) {
-          int numero = val["numero"];
-          bool disponible = val["disponible"];
-          bool reservado = val["reservado"];
-          
-          if (numero >= 1 && numero <= NUM_CAJONES) {
-            disponibleServidor[numero - 1] = disponible;
-            reservadoServidor[numero - 1] = reservado;
-          }
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      JsonArray arr = doc.as<JsonArray>();
+      for (JsonVariant val : arr) {
+        int numero = val["numero"];
+        bool disponible = val["disponible"];
+        bool reservado = val["reservado"];
+        
+        if (numero >= 1 && numero <= NUM_CAJONES) {
+          disponibleServidor[numero - 1] = disponible;
+          reservadoServidor[numero - 1] = reservado;
         }
-        // Recalcular cupos libres localmente (el loop en Core 1 se encargará del redibujo de forma segura)
-        int libresLocales = 0;
-        for (int j = 0; j < NUM_CAJONES; j++) {
-          if (estadoFisico[j] && !reservadoServidor[j]) {
-            libresLocales++;
-          }
-        }
-        espaciosLibres = libresLocales;
       }
+      
+      int libresLocales = 0;
+      for (int j = 0; j < NUM_CAJONES; j++) {
+        if (estadoFisico[j] && !reservadoServidor[j]) {
+          libresLocales++;
+        }
+      }
+      espaciosLibres = libresLocales;
     }
-    http.end();
   }
 }
 

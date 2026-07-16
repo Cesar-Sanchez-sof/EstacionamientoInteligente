@@ -12,6 +12,10 @@
 const char* ssid = "XIDI";
 const char* password = "18011303";
   
+// --- CONFIGURACIÓN DE BACKEND ---
+// Autodetecta http o https. Puedes usar "http://192.168.x.x:5000" en local o tu URL de Vercel
+const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
+
 // --- CONFIGURACIÓN DE PINES (ESP32 de 30 Pines) ---
 #define SS_PIN           5
 #define RST_PIN          4
@@ -30,7 +34,7 @@ Servo servoSalida;
 bool salidaAbierta = false; 
 bool bloqueoSalida = false;  
 
-// --- VARIABLES COMPARTIDAS ENTRE NÚCLEOS (THREAD-SAFE / VOLATILE) ---
+// --- VARIABLES COMPARTIDAS ENTRE NÚCLEOS ---
 volatile bool cmdAbrirSalida = false;
 
 // Cerrojos (latches) para evitar doble apertura desde web
@@ -51,6 +55,7 @@ unsigned long lastRfidInitTime = 0;
 const unsigned long rfidInitInterval = 4000; // Re-inicializar el RFID cada 4 segundos para evitar congelamientos
 
 // Declaración de funciones
+int makeHttpRequest(String url, String method, String payload, String &responseOut);
 void verificarBarrerasServidor();
 void enviarRfidAccesoSalida(const char* uid);
 void tareaNetwork(void * pvParameters);
@@ -102,7 +107,6 @@ void loop() {
   bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
 
   // 2. Lectura del lector RFID de Salida
-  // Heartbeat: Re-inicializa periódicamente el chip RC522 si ha estado inactivo para evitar bloqueos del bus SPI
   if (millis() - lastRfidInitTime >= rfidInitInterval) {
     lastRfidInitTime = millis();
     rfid.PCD_Init();
@@ -128,10 +132,14 @@ void loop() {
     Serial.print("RFID Salida: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
-    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-    rfidPendingRequest = true;
-    cmdAbrirSalida = true; // Abrir la barrera localmente de inmediato al leer la tarjeta
+    // SOLO si se detecta físicamente el vehículo en el sensor FC-51 de salida, mandamos la solicitud
+    if (objetoEnSalida) {
+      // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
+      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+      rfidPendingRequest = true;
+    } else {
+      Serial.println("Lectura RFID ignorada: No se detecta vehículo físico en la salida (FC-51).");
+    }
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -165,107 +173,150 @@ void loop() {
 }
 
 // =========================================================================
-// NÚCLEO 0: TAREA RED / HTTP (PROCESAMIENTO ASÍNCRONO SIN AFECTAR HARDWARE)
+// NÚCLEO 0: TAREA RED / HTTP (PROCESAMIENTO SERIALIZADO Y SEGURO)
 // =========================================================================
 void tareaNetwork(void * pvParameters) {
   for(;;) {
-    // 1. Procesar solicitudes pendientes de validación RFID de salida
-    if (rfidPendingRequest) {
-      enviarRfidAccesoSalida((const char*)rfidPendingUid);
-      rfidPendingRequest = false;
-    }
+    if (WiFi.status() == WL_CONNECTED) {
+      
+      // 1. Prioridad: Procesar solicitudes pendientes de validación RFID de salida
+      if (rfidPendingRequest) {
+        enviarRfidAccesoSalida((const char*)rfidPendingUid);
+        rfidPendingRequest = false;
+        vTaskDelay(pdMS_TO_TICKS(100)); // Pequeño respiro
+      }
 
-    // 2. Polling de barrera web de salida (cada 1.5 segundos)
-    if ((millis() - lastBarrierApiTime) > barrierApiDelay || lastBarrierApiTime == 0) {
-      verificarBarrerasServidor();
-      lastBarrierApiTime = millis();
+      // 2. Polling de barrera web de salida (cada 1.5 segundos)
+      if ((millis() - lastBarrierApiTime) > barrierApiDelay || lastBarrierApiTime == 0) {
+        verificarBarrerasServidor();
+        lastBarrierApiTime = millis();
+        vTaskDelay(pdMS_TO_TICKS(100));
+      }
     }
     
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
-void enviarRfidAccesoSalida(const char* uid) {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/access/exit");
-    http.addHeader("Content-Type", "application/json");
+// Función auxiliar agnóstica para realizar peticiones HTTP o HTTPS dinámicamente
+int makeHttpRequest(String url, String method, String payload, String &responseOut) {
+  WiFiClient* client = nullptr;
+  WiFiClientSecure* clientSecure = nullptr;
+  bool isHttps = url.startsWith("https://");
+  
+  if (isHttps) {
+    clientSecure = new WiFiClientSecure();
+    clientSecure->setInsecure(); // Omitir verificación de certificados
+    client = clientSecure;
+  } else {
+    client = new WiFiClient();
+  }
+  
+  HTTPClient http;
+  bool beginSuccess = false;
+  
+  if (isHttps) {
+    beginSuccess = http.begin(*clientSecure, url);
+  } else {
+    beginSuccess = http.begin(*client, url);
+  }
+  
+  int httpResponseCode = -1;
+  if (beginSuccess) {
     http.addHeader("User-Agent", "ESP32-Salida");
-    
-    String body = "{\"codigo_rfid\":\"" + String(uid) + "\"}";
-    
-    int httpResponseCode = http.POST(body);
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
-#if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
-#else
-      DynamicJsonDocument doc(1024);
-#endif
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error) {
-        bool success = doc["success"];
-        String usuario = doc["usuario"];
-        
-        if (success) {
-          cmdAbrirSalida = true;
-          Serial.print(">>> Salida RFID [");
-          Serial.print(uid);
-          Serial.print("] concedida a: ");
-          Serial.println(usuario);
-        }
-      }
+    if (method == "POST" || method == "PUT") {
+      http.addHeader("Content-Type", "application/json");
+      httpResponseCode = (method == "POST") ? http.POST(payload) : http.PUT(payload);
     } else {
-      Serial.print(">>> Salida RFID [");
-      Serial.print(uid);
-      Serial.print("] denegada o error de red. Codigo HTTP: ");
-      Serial.println(httpResponseCode);
+      httpResponseCode = http.GET();
+    }
+    
+    if (httpResponseCode > 0) {
+      responseOut = http.getString();
+    } else {
+      Serial.print("HTTP Error en ");
+      Serial.print(url);
+      Serial.print(": ");
+      Serial.println(http.errorToString(httpResponseCode).c_str());
     }
     http.end();
+  } else {
+    Serial.println("Fallo al establecer conexión HTTP.");
+  }
+  
+  if (isHttps) {
+    delete clientSecure;
+  } else {
+    delete client;
+  }
+  
+  return httpResponseCode;
+}
+
+void enviarRfidAccesoSalida(const char* uid) {
+  String url = backendUrl + "/api/spaces/access/exit";
+  String body = "{\"codigo_rfid\":\"" + String(uid) + "\"}";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "POST", body, response);
+  if (httpResponseCode == 200) {
+#if ARDUINOJSON_VERSION_MAJOR >= 7
+    JsonDocument doc;
+#else
+    DynamicJsonDocument doc(1024);
+#endif
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      bool success = doc["success"];
+      String usuario = doc["usuario"];
+      
+      if (success) {
+        cmdAbrirSalida = true;
+        Serial.print(">>> Salida RFID [");
+        Serial.print(uid);
+        Serial.print("] concedida a: ");
+        Serial.println(usuario);
+      }
+    }
+  } else {
+    Serial.print(">>> Salida RFID [");
+    Serial.print(uid);
+    Serial.print("] denegada o error de red. Codigo HTTP: ");
+    Serial.println(httpResponseCode);
   }
 }
 
 void verificarBarrerasServidor() {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.begin(client, "https://estacionamiento-inteligente.vercel.app/api/spaces/barrier/status");
-    http.addHeader("User-Agent", "ESP32-Salida");
-    
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
+  String url = backendUrl + "/api/spaces/barrier/status";
+  String response;
+  
+  int httpResponseCode = makeHttpRequest(url, "GET", "", response);
+  if (httpResponseCode == 200) {
 #if ARDUINOJSON_VERSION_MAJOR >= 7
-      JsonDocument doc;
+    JsonDocument doc;
 #else
-      DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(1024);
 #endif
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error) {
-        JsonArray arr = doc.as<JsonArray>();
-        for (JsonVariant val : arr) {
-          int id_barrera = val["id_barrera"];
-          String estado = val["estado"];
-          
-          if (id_barrera == 2) { // Salida
-            if (estado == "ABIERTA") {
-              if (!remotoSalidaProcesado) {
-                cmdAbrirSalida = true;
-                remotoSalidaProcesado = true;
-              }
-            } else if (estado == "CERRADA") {
-              remotoSalidaProcesado = false;
+    DeserializationError error = deserializeJson(doc, response);
+    
+    if (!error) {
+      JsonArray arr = doc.as<JsonArray>();
+      for (JsonVariant val : arr) {
+        int id_barrera = val["id_barrera"];
+        String estado = val["estado"];
+        
+        if (id_barrera == 2) { // Salida
+          if (estado == "ABIERTA") {
+            if (!remotoSalidaProcesado) {
+              cmdAbrirSalida = true;
+              remotoSalidaProcesado = true;
             }
+          } else if (estado == "CERRADA") {
+            remotoSalidaProcesado = false;
           }
         }
       }
     }
-    http.end();
   }
 }
