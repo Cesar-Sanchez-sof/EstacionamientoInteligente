@@ -213,6 +213,7 @@ void loop() {
     // Copiar UID a la variable compartida para que Core 0 haga la consulta web
     uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
     rfidPendingRequest = true;
+    cmdAbrirEntrada = true; // Abrir la barrera localmente de inmediato al leer la tarjeta
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -222,6 +223,7 @@ void loop() {
   if (cmdAbrirEntrada) {
     cmdAbrirEntrada = false;
     if (!entradaAbierta) {
+      delay(250); // Pausa para estabilizar la corriente de la fuente antes de mover el servo
       servoEntrada.write(ENTRADA_ABIERTO); 
       entradaAbierta = true;
       tiempoAperturaEntrada = millis();
