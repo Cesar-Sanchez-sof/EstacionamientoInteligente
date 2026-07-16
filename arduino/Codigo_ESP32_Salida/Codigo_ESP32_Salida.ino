@@ -132,14 +132,10 @@ void loop() {
     Serial.print("RFID Salida: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // SOLO si se detecta físicamente el vehículo en el sensor FC-51 de salida, mandamos la solicitud
-    if (objetoEnSalida) {
-      // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
-      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-      rfidPendingRequest = true;
-    } else {
-      Serial.println("Lectura RFID ignorada: No se detecta vehículo físico en la salida (FC-51).");
-    }
+    // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
+    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+    rfidPendingRequest = true;
+    cmdAbrirSalida = true; // Abrir la barrera de inmediato al leer la tarjeta
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -198,56 +194,56 @@ void tareaNetwork(void * pvParameters) {
   }
 }
 
-// Función auxiliar agnóstica para realizar peticiones HTTP o HTTPS dinámicamente
+// Función auxiliar agnóstica para realizar peticiones HTTP o HTTPS dinámicamente sin leaks de memoria
 int makeHttpRequest(String url, String method, String payload, String &responseOut) {
-  WiFiClient* client = nullptr;
-  WiFiClientSecure* clientSecure = nullptr;
+  int httpResponseCode = -1;
   bool isHttps = url.startsWith("https://");
   
   if (isHttps) {
-    clientSecure = new WiFiClientSecure();
-    clientSecure->setInsecure(); // Omitir verificación de certificados
-    client = clientSecure;
-  } else {
-    client = new WiFiClient();
-  }
-  
-  HTTPClient http;
-  bool beginSuccess = false;
-  
-  if (isHttps) {
-    beginSuccess = http.begin(*clientSecure, url);
-  } else {
-    beginSuccess = http.begin(*client, url);
-  }
-  
-  int httpResponseCode = -1;
-  if (beginSuccess) {
-    http.addHeader("User-Agent", "ESP32-Salida");
-    if (method == "POST" || method == "PUT") {
-      http.addHeader("Content-Type", "application/json");
-      httpResponseCode = (method == "POST") ? http.POST(payload) : http.PUT(payload);
-    } else {
-      httpResponseCode = http.GET();
+    WiFiClientSecure client;
+    client.setInsecure(); // Omitir verificación de certificados
+    HTTPClient http;
+    if (http.begin(client, url)) {
+      http.addHeader("User-Agent", "ESP32-Salida");
+      if (method == "POST" || method == "PUT") {
+        http.addHeader("Content-Type", "application/json");
+        httpResponseCode = (method == "POST") ? http.POST(payload) : http.PUT(payload);
+      } else {
+        httpResponseCode = http.GET();
+      }
+      
+      if (httpResponseCode > 0) {
+        responseOut = http.getString();
+      } else {
+        Serial.print("HTTP Error en ");
+        Serial.print(url);
+        Serial.print(": ");
+        Serial.println(http.errorToString(httpResponseCode).c_str());
+      }
+      http.end();
     }
-    
-    if (httpResponseCode > 0) {
-      responseOut = http.getString();
-    } else {
-      Serial.print("HTTP Error en ");
-      Serial.print(url);
-      Serial.print(": ");
-      Serial.println(http.errorToString(httpResponseCode).c_str());
+  } else {
+    WiFiClient client;
+    HTTPClient http;
+    if (http.begin(client, url)) {
+      http.addHeader("User-Agent", "ESP32-Salida");
+      if (method == "POST" || method == "PUT") {
+        http.addHeader("Content-Type", "application/json");
+        httpResponseCode = (method == "POST") ? http.POST(payload) : http.PUT(payload);
+      } else {
+        httpResponseCode = http.GET();
+      }
+      
+      if (httpResponseCode > 0) {
+        responseOut = http.getString();
+      } else {
+        Serial.print("HTTP Error en ");
+        Serial.print(url);
+        Serial.print(": ");
+        Serial.println(http.errorToString(httpResponseCode).c_str());
+      }
+      http.end();
     }
-    http.end();
-  } else {
-    Serial.println("Fallo al establecer conexión HTTP.");
-  }
-  
-  if (isHttps) {
-    delete clientSecure;
-  } else {
-    delete client;
   }
   
   return httpResponseCode;
