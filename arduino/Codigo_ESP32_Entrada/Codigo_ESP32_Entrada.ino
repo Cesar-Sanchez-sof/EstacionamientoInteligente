@@ -36,8 +36,8 @@ const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
 #define NUM_LEDS         20 // 2 LEDs por cajón
 
 // Pines para los 10 sensores FC-51 de cajones
-// CAMBIO IMPORTANTE: Se cambió el pin del cajón 10 de 12 a 14 para evitar conflicto de booteo (strapping pin)
-const int pinFC51Cajones[NUM_CAJONES] = {25, 26, 27, 32, 33, 34, 35, 36, 39, 14};
+// CAMBIO IMPORTANTE: Se cambió el pin del cajón 10 de 12 a 17 para evitar conflicto de booteo (strapping pin)
+const int pinFC51Cajones[NUM_CAJONES] = {25, 26, 27, 32, 33, 34, 35, 36, 39, 17};
 
 // --- ÁNGULOS DE LOS SERVOMOTORES (AJUSTABLES) ---
 const int ENTRADA_CERRADO = 90;
@@ -218,9 +218,19 @@ void loop() {
   }
 
   // DETECCION AUTOMATICA POR FC51: Si detecta objeto de forma estable y no esta bloqueado, abre automaticamente
+  // SOLO si hay espacios libres (espaciosLibres > 0)
   if (objetoEnEntrada && !bloqueoEntrada && !entradaAbierta) {
-    cmdAbrirEntrada = true;
-    Serial.println("FC-51 Entrada detecto objeto: Apertura automatica.");
+    if (espaciosLibres > 0) {
+      cmdAbrirEntrada = true;
+      Serial.println("FC-51 Entrada detecto objeto: Apertura automatica.");
+    } else {
+      Serial.println("FC-51 Entrada detecto objeto pero el parking esta LLENO (Aforo Max).");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("PARKING LLENO");
+      lcd.setCursor(0, 1);
+      lcd.print("Aforo Max.");
+    }
   }
 
   // 2. Lectura del lector RFID de Entrada
@@ -233,28 +243,43 @@ void loop() {
   if (!rfidPendingRequest && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
     lastRfidInitTime = millis(); // Reiniciar timer de heartbeat para no interrumpir lectura
     
-    // Formatear el UID en una cadena hexadecimal (ej: "A0 B1 C2 D3")
-    String uidString = "";
-    for (byte i = 0; i < rfid.uid.size; i++) {
-      if (rfid.uid.uidByte[i] < 0x10) {
-        uidString += "0";
+    // Si el parking está lleno, rechazar acceso RFID inmediatamente localmente
+    if (espaciosLibres <= 0) {
+      Serial.println("RFID Entrada leido pero rechazado: Estacionamiento lleno (Aforo Max).");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("PARKING LLENO");
+      lcd.setCursor(0, 1);
+      lcd.print("Aforo Maximo");
+      delay(1500);
+      restaurarPantallaLCD();
+      
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
+    } else {
+      // Formatear el UID en una cadena hexadecimal (ej: "A0 B1 C2 D3")
+      String uidString = "";
+      for (byte i = 0; i < rfid.uid.size; i++) {
+        if (rfid.uid.uidByte[i] < 0x10) {
+          uidString += "0";
+        }
+        uidString += String(rfid.uid.uidByte[i], HEX);
+        if (i < rfid.uid.size - 1) {
+          uidString += " ";
+        }
       }
-      uidString += String(rfid.uid.uidByte[i], HEX);
-      if (i < rfid.uid.size - 1) {
-        uidString += " ";
-      }
-    }
-    uidString.toUpperCase();
-    
-    Serial.print("RFID Entrada: Tarjeta leida - UID: ");
-    Serial.println(uidString);
-    
-    // Copiar UID a la variable compartida para que Core 0 haga la consulta web
-    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-    rfidPendingRequest = true; 
+      uidString.toUpperCase();
+      
+      Serial.print("RFID Entrada: Tarjeta leida - UID: ");
+      Serial.println(uidString);
+      
+      // Copiar UID a la variable compartida para que Core 0 haga la consulta web
+      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+      rfidPendingRequest = true; 
 
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
+    }
   }
 
   // 3. Comando de Apertura local o Remota (Web / RFID Aprobado)
