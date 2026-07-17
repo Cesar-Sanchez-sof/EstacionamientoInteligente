@@ -157,20 +157,32 @@ void setup() {
   servoEntrada.attach(PIN_SERVO_ENT, 500, 2400); 
   servoEntrada.write(ENTRADA_CERRADO);
 
-  // 5. Conectar a WiFi
+  // 5. Conectar a WiFi (NO BLOQUEANTE - Max 10 segundos)
   WiFi.begin(ssid, password);
   lcd.setCursor(0, 1);
   lcd.print("Conectando WiFi");
+  Serial.println("Iniciando conexión WiFi...");
   
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long startWifiTime = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startWifiTime < 10000)) {
     delay(500);
     Serial.print(".");
   }
   
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("WiFi Conectado!");
-  delay(1000);
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Conectado!");
+    Serial.println("\n>>> WiFi Conectado con éxito.");
+    delay(1000);
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi No Conectado");
+    lcd.setCursor(0, 1);
+    lcd.print("Modo Offline... ");
+    Serial.println("\n>>> Error: No se pudo conectar al WiFi. Iniciando en Modo Offline.");
+    delay(2000);
+  }
   
   restaurarPantallaLCD();
 
