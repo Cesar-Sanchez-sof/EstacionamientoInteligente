@@ -103,10 +103,22 @@ void setup() {
 // NÚCLEO 1: LOOP FÍSICO DE ALTA VELOCIDAD (RFID, SERVO, SENSOR DE SALIDA)
 // =========================================================================
 void loop() {
-  // 1. Lectura del sensor de presencia de salida (HIGH = libre, LOW = objeto/vehículo detectado)
-  bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
+  // 1. Lectura con DEBOUNCE del sensor de presencia de salida para evitar oscilaciones por rebotes físicos o ruido eléctrico
+  static bool objetoEnSalida = false;
+  static bool ultimoEstadoFC51 = false;
+  static unsigned long tiempoCambioFC51 = 0;
+  bool lecturaFC51 = (digitalRead(PIN_FC51_SAL) == LOW); // LOW = vehículo detectado
 
-  // DETECCION AUTOMATICA POR FC51: Si detecta objeto y no esta bloqueado, abre automaticamente
+  if (lecturaFC51 != ultimoEstadoFC51) {
+    ultimoEstadoFC51 = lecturaFC51;
+    tiempoCambioFC51 = millis();
+  }
+
+  if ((millis() - tiempoCambioFC51) > 1500) { // Requiere 1.5s de estabilidad
+    objetoEnSalida = lecturaFC51;
+  }
+
+  // DETECCION AUTOMATICA POR FC51: Si detecta objeto de forma estable y no esta bloqueado, abre automaticamente
   if (objetoEnSalida && !bloqueoSalida && !salidaAbierta) {
     cmdAbrirSalida = true;
     Serial.println("FC-51 Salida detecto objeto: Apertura automatica.");
