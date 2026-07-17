@@ -326,7 +326,7 @@ void loop() {
         // Calcular cupos libres localmente para actualizar el LCD de inmediato
         int libresLocales = 0;
         for (int j = 0; j < NUM_CAJONES; j++) {
-          if (estadoFisico[j] && !reservadoServidor[j]) {
+          if (estadoFisico[j] && disponibleServidor[j] && !reservadoServidor[j]) {
             libresLocales++;
           }
         }
@@ -640,7 +640,7 @@ void consultarReservasServidor() {
       
       int libresLocales = 0;
       for (int j = 0; j < NUM_CAJONES; j++) {
-        if (estadoFisico[j] && !reservadoServidor[j]) {
+        if (estadoFisico[j] && disponibleServidor[j] && !reservadoServidor[j]) {
           libresLocales++;
         }
       }
