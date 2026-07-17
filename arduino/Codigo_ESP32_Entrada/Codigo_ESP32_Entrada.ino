@@ -228,7 +228,6 @@ void loop() {
     // Copiar UID a la variable compartida para que Core 0 haga la consulta web
     uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
     rfidPendingRequest = true; 
-    // NOTA: NO abrimos el servo localmente de inmediato para que la apertura dependa de la respuesta del servidor (success: true)
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -265,7 +264,7 @@ void loop() {
     
     if (lecturaInstantanea != ultimoEstadoFisico[i]) {
       ultimoEstadoFisico[i] = lecturaInstantanea;
-      tiempoCambio[i] = millis();
+      tiempoChange: tiempoCambio[i] = millis();
     }
     
     if ((millis() - tiempoCambio[i]) > tiempoDebounce) {
@@ -371,6 +370,13 @@ void tareaNetwork(void * pvParameters) {
         lastStatusApiTime = millis();
         vTaskDelay(pdMS_TO_TICKS(100));
       }
+    } else {
+      // WiFi desconectado: cancelar solicitudes pendientes para no bloquear lector
+      if (rfidPendingRequest) {
+        Serial.println(">>> Error de red: Solicitud de tarjeta cancelada por falta de WiFi.");
+        rfidPendingRequest = false;
+      }
+      vTaskDelay(pdMS_TO_TICKS(500));
     }
     
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -381,6 +387,11 @@ void tareaNetwork(void * pvParameters) {
 int makeHttpRequest(String url, String method, String payload, String &responseOut) {
   int httpResponseCode = -1;
   bool isHttps = url.startsWith("https://");
+  
+  Serial.print("--- HTTP Request [");
+  Serial.print(method);
+  Serial.print("] a URL: ");
+  Serial.println(url);
   
   if (isHttps) {
     WiFiClientSecure client;
@@ -429,6 +440,8 @@ int makeHttpRequest(String url, String method, String payload, String &responseO
     }
   }
   
+  Serial.print("HTTP Status Code: ");
+  Serial.println(httpResponseCode);
   return httpResponseCode;
 }
 
@@ -467,6 +480,15 @@ void enviarRfidAccesoEntrada(const char* uid) {
         Serial.print(">>> Acceso RFID concedido a: ");
         Serial.println(usuario);
         vTaskDelay(pdMS_TO_TICKS(1500)); // Usar vTaskDelay seguro en Core 0
+      } else {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("ACCESO DENEGADO ");
+        lcd.setCursor(0, 1);
+        lcd.print("No Autorizado   ");
+        Serial.println(">>> Acceso RFID denegado por el servidor.");
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        restaurarPantallaLCD();
       }
     }
   } else {

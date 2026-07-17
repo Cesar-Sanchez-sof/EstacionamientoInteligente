@@ -141,7 +141,6 @@ void loop() {
     // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
     uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
     rfidPendingRequest = true; 
-    // NOTA: NO abrimos el servo localmente de inmediato para que la apertura dependa de la respuesta del servidor (success: true)
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -194,6 +193,13 @@ void tareaNetwork(void * pvParameters) {
         lastBarrierApiTime = millis();
         vTaskDelay(pdMS_TO_TICKS(100));
       }
+    } else {
+      // WiFi desconectado: cancelar solicitudes pendientes para no bloquear lector
+      if (rfidPendingRequest) {
+        Serial.println(">>> Error de red: Solicitud de tarjeta de salida cancelada por falta de WiFi.");
+        rfidPendingRequest = false;
+      }
+      vTaskDelay(pdMS_TO_TICKS(500));
     }
     
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -204,6 +210,11 @@ void tareaNetwork(void * pvParameters) {
 int makeHttpRequest(String url, String method, String payload, String &responseOut) {
   int httpResponseCode = -1;
   bool isHttps = url.startsWith("https://");
+  
+  Serial.print("--- HTTP Request [");
+  Serial.print(method);
+  Serial.print("] a URL: ");
+  Serial.println(url);
   
   if (isHttps) {
     WiFiClientSecure client;
@@ -252,6 +263,8 @@ int makeHttpRequest(String url, String method, String payload, String &responseO
     }
   }
   
+  Serial.print("HTTP Status Code: ");
+  Serial.println(httpResponseCode);
   return httpResponseCode;
 }
 
@@ -279,6 +292,10 @@ void enviarRfidAccesoSalida(const char* uid) {
         Serial.print(uid);
         Serial.print("] concedida a: ");
         Serial.println(usuario);
+      } else {
+        Serial.print(">>> Salida RFID [");
+        Serial.print(uid);
+        Serial.println("] denegada por el servidor: No Autorizado.");
       }
     }
   } else {
