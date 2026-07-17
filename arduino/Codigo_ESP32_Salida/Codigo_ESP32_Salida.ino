@@ -103,7 +103,7 @@ void setup() {
 // NÚCLEO 1: LOOP FÍSICO DE ALTA VELOCIDAD (RFID, SERVO, SENSOR DE SALIDA)
 // =========================================================================
 void loop() {
-  // 1. Lectura del sensor de presencia de salida (HIGH = libre, LOW = objeto detectado)
+  // 1. Lectura del sensor de presencia de salida (HIGH = libre, LOW = objeto/vehículo detectado)
   bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
 
   // 2. Lectura del lector RFID de Salida
@@ -132,10 +132,15 @@ void loop() {
     Serial.print("RFID Salida: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
-    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-    rfidPendingRequest = true;
-    cmdAbrirSalida = true; // Abrir la barrera de inmediato al leer la tarjeta
+    // MODIFICACIÓN DE SEGURIDAD: Solo abre si hay un vehículo detectado por el sensor FC-51 de salida
+    if (objetoEnSalida) {
+      // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
+      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+      rfidPendingRequest = true;
+      cmdAbrirSalida = true; // Activa la orden de apertura
+    } else {
+      Serial.println("Apertura rechazada: No se detecta vehículo físico en el sensor FC-51 de salida.");
+    }
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
