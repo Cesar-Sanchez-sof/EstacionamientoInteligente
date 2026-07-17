@@ -9,7 +9,7 @@
 #include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
-const char* ssid = "ChuliPi";
+const char* ssid = "ChulaPi";
 const char* password = "74036718";
   
 // --- CONFIGURACIÓN DE BACKEND ---
@@ -106,6 +106,12 @@ void loop() {
   // 1. Lectura del sensor de presencia de salida (HIGH = libre, LOW = objeto/vehículo detectado)
   bool objetoEnSalida = (digitalRead(PIN_FC51_SAL) == LOW);
 
+  // DETECCION AUTOMATICA POR FC51: Si detecta objeto y no esta bloqueado, abre automaticamente
+  if (objetoEnSalida && !bloqueoSalida && !salidaAbierta) {
+    cmdAbrirSalida = true;
+    Serial.println("FC-51 Salida detecto objeto: Apertura automatica.");
+  }
+
   // 2. Lectura del lector RFID de Salida
   if (millis() - lastRfidInitTime >= rfidInitInterval) {
     lastRfidInitTime = millis();
@@ -132,15 +138,10 @@ void loop() {
     Serial.print("RFID Salida: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // MODIFICACIÓN DE SEGURIDAD: Solo abre si hay un vehículo detectado por el sensor FC-51 de salida
-    if (objetoEnSalida) {
-      // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
-      uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-      rfidPendingRequest = true;
-      cmdAbrirSalida = true; // Activa la orden de apertura
-    } else {
-      Serial.println("Apertura rechazada: No se detecta vehículo físico en el sensor FC-51 de salida.");
-    }
+    // Copiar UID a la variable compartida para que Core 0 haga la validación en la nube
+    uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
+    rfidPendingRequest = true; 
+    // NOTA: NO abrimos el servo localmente de inmediato para que la apertura dependa de la respuesta del servidor (success: true)
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -162,12 +163,12 @@ void loop() {
   if (salidaAbierta && (millis() - tiempoAperturaSalida >= duracionApertura)) {
     servoSalida.write(SALIDA_CERRADO); 
     salidaAbierta = false;
-    bloqueoSalida = true;
+    bloqueoSalida = true; // Bloquea reapertura inmediata hasta que se retire el vehiculo
     rfid.PCD_Init(); // Re-inicializar lector RFID por si hubo caídas de tensión por el servo
     Serial.println("RFID re-inicializado tras cierre de Salida.");
   }
   if (!objetoEnSalida) {
-    bloqueoSalida = false;
+    bloqueoSalida = false; // Desbloquea cuando el vehiculo se retira
   }
 
   delay(20);

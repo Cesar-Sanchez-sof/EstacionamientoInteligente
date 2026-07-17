@@ -12,7 +12,7 @@
 #include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
-const char* ssid = "ChuliPi";
+const char* ssid = "ChulaPi";
 const char* password = "74036718";
 
 // --- CONFIGURACIÓN DE BACKEND ---
@@ -193,6 +193,12 @@ void loop() {
   // 1. Lectura instantánea del sensor de acceso de entrada (HIGH = libre, LOW = objeto detectado)
   bool objetoEnEntrada = (digitalRead(PIN_FC51_ENT) == LOW);
 
+  // DETECCION AUTOMATICA POR FC51: Si detecta objeto y no esta bloqueado, abre automaticamente
+  if (objetoEnEntrada && !bloqueoEntrada && !entradaAbierta) {
+    cmdAbrirEntrada = true;
+    Serial.println("FC-51 Entrada detecto objeto: Apertura automatica.");
+  }
+
   // 2. Lectura del lector RFID de Entrada
   if (millis() - lastRfidInitTime >= rfidInitInterval) {
     lastRfidInitTime = millis();
@@ -219,10 +225,10 @@ void loop() {
     Serial.print("RFID Entrada: Tarjeta leida - UID: ");
     Serial.println(uidString);
     
-    // Copiar UID a la variable compartida para que Core 0 haga la consulta web (como en tu código original)
+    // Copiar UID a la variable compartida para que Core 0 haga la consulta web
     uidString.toCharArray((char*)rfidPendingUid, sizeof(rfidPendingUid));
-    rfidPendingRequest = true;
-    cmdAbrirEntrada = true; // Abrir de inmediato localmente al pasar la tarjeta para evitar demoras físicas
+    rfidPendingRequest = true; 
+    // NOTA: NO abrimos el servo localmente de inmediato para que la apertura dependa de la respuesta del servidor (success: true)
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
@@ -243,14 +249,14 @@ void loop() {
   if (entradaAbierta && (millis() - tiempoAperturaEntrada >= duracionApertura)) {
     servoEntrada.write(ENTRADA_CERRADO); 
     entradaAbierta = false;
-    bloqueoEntrada = true;
+    bloqueoEntrada = true; // Bloquea reapertura inmediata hasta que se retire el vehiculo
     restaurarPantallaLCD();
     rfid.PCD_Init(); // Re-inicializar lector RFID por si hubo caídas de tensión por el servo
     rfid.PCD_SetAntennaGain(MFRC522::RxGain_max); // Restablecer ganancia máxima de antena
     Serial.println("RFID re-inicializado tras cierre de Entrada.");
   }
   if (!objetoEnEntrada) {
-    bloqueoEntrada = false;
+    bloqueoEntrada = false; // Desbloquea cuando el vehiculo se retira
   }
 
   // 5. Monitoreo y Debouncing de los 10 sensores de cajones
