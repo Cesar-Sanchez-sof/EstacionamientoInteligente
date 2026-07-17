@@ -40,8 +40,8 @@ const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
 const int pinFC51Cajones[NUM_CAJONES] = {25, 26, 27, 32, 33, 34, 35, 36, 39, 14};
 
 // --- ÁNGULOS DE LOS SERVOMOTORES (AJUSTABLES) ---
-const int ENTRADA_CERRADO = 0;
-const int ENTRADA_ABIERTO = 90;
+const int ENTRADA_CERRADO = 90;
+const int ENTRADA_ABIERTO = 0;
 
 // --- INICIALIZACIÓN DE PERIFÉRICOS ---
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2); 
