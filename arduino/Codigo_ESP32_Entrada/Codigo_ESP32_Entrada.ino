@@ -19,6 +19,9 @@ const char* password = "18011303";
 // Autodetecta http o https. Puedes usar "http://192.168.x.x:5000" en local o tu URL de Vercel
 const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
 
+// --- CONFIGURACIÓN DE DIRECCIÓN I2C DE LA PANTALLA LCD ---
+#define LCD_ADDRESS      0x27  // Por defecto 0x27. Cambiar a 0x3F si tu LCD I2C no muestra texto
+
 // --- CONFIGURACIÓN DE PINES (ESP32 de 38 Pines) ---
 #define I2C_SDA          21
 #define I2C_SCL          22
@@ -33,14 +36,15 @@ const String backendUrl = "https://estacionamiento-inteligente.vercel.app";
 #define NUM_LEDS         20 // 2 LEDs por cajón
 
 // Pines para los 10 sensores FC-51 de cajones
-const int pinFC51Cajones[NUM_CAJONES] = {25, 26, 27, 32, 33, 34, 35, 36, 39, 12};
+// CAMBIO IMPORTANTE: Se cambió el pin del cajón 10 de 12 a 14 para evitar conflicto de booteo (strapping pin)
+const int pinFC51Cajones[NUM_CAJONES] = {25, 26, 27, 32, 33, 34, 35, 36, 39, 14};
 
 // --- ÁNGULOS DE LOS SERVOMOTORES (AJUSTABLES) ---
 const int ENTRADA_CERRADO = 90;
 const int ENTRADA_ABIERTO = 0;
 
 // --- INICIALIZACIÓN DE PERIFÉRICOS ---
-LiquidCrystal_I2C lcd(0x27, 16, 2); 
+LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2); 
 MFRC522 rfid(SS_PIN, RST_PIN);
 Servo servoEntrada;
 Adafruit_NeoPixel pixels(NUM_LEDS, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
