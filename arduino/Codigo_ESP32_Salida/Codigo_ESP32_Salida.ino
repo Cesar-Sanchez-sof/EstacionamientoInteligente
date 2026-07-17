@@ -9,8 +9,8 @@
 #include "soc/rtc_cntl_reg.h"
 
 // --- CONFIGURACIÓN DE RED WIFI ---
-const char* ssid = "XIDI";
-const char* password = "18011303";
+const char* ssid = "ChuliPi";
+const char* password = "74036718";
   
 // --- CONFIGURACIÓN DE BACKEND ---
 // Autodetecta http o https. Puedes usar "http://192.168.x.x:5000" en local o tu URL de Vercel
